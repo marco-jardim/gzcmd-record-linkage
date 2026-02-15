@@ -1,0 +1,264 @@
+# GZ-CMD++ v3
+# Auto-calibrated probabilistic post-processing for probabilistic linkage
+# - No re-blocking
+# - Self-calibration (no human threshold tuning)
+# - LLM-based clerical review for ambiguous pairs (optional, budgeted)
+#
+# Notes:
+# - Designed to operate on NON-IDENTIFIED features (e.g., 29 comparator subscores + engineered features).
+# - If you do have a secure enclave that can access identified fields, you can enable it for the LLM
+#   but MUST keep redaction / leakage guards on.
+#
+version: 3
+
+run:
+  window:
+    # rolling window for drift + calibration; choose "weekly" or "monthly" depending on volume
+    cadence: "weekly"
+    lookback_days: 28
+  modes:
+    - name: "vigilancia"
+      description: "Prioriza recall (sensibilidade) para recuperar o máximo de óbitos."
+    - name: "confirmacao"
+      description: "Prioriza precision (alta confiança) para listas muito confiáveis."
+
+features:
+  expected_columns:
+    # core comparator outputs
+    - nota_final
+    - step
+    # example subscores (adapt to your real column names)
+    - nome_score_total
+    - mae_score_total
+    - dtnasc_score_total
+    - endereco_score_total
+    - municipio_score
+    # engineered / interaction features (examples)
+    - nome_x_dtnasc
+    - nome_x_mae
+    - mae_presente
+    - dtnasc_perfeito
+    - nome_perfeito
+  missingness_flags:
+    - nome_missing
+    - mae_missing
+    - dtnasc_missing
+    - endereco_missing
+
+bands:
+  # Bands are used for:
+  #  - anchor-based calibration (different behavior by band)
+  #  - LLM error profiling (expected error differs by band)
+  #  - drift monitoring slices
+  definitions:
+    low:
+      min: 0.0
+      max: 5.0
+      inclusive_max: false
+    grey_low:
+      min: 5.0
+      max: 6.0
+      inclusive_max: false
+    grey_mid:
+      min: 6.0
+      max: 7.0
+      inclusive_max: false
+    grey_high:
+      min: 7.0
+      max: 8.0
+      inclusive_max: false
+    near_high:
+      min: 8.0
+      max: 9.0
+      inclusive_max: false
+    high:
+      min: 9.0
+      max: 999.0
+      inclusive_max: true
+
+anchors:
+  # Anchor sets for label-free calibration
+  # Based on the thesis: score bands 9-10 and 10+ are ~98% true matches; very low bands are ~0%.
+  pos_anchor:
+    rule: "nota_final >= 9.0"
+    target_mean_probability: 0.98
+    min_count: 50
+  neg_anchor:
+    rule: "nota_final < 5.0"
+    target_mean_probability: 0.001
+    min_count: 200
+
+base_model:
+  # Your pre-trained model that outputs p_base (uncalibrated or weakly calibrated)
+  # Keep it stable; adapt via online calibration, not by retraining.
+  type: "random_forest"
+  artifact_path: "models/rf_smote.pkl"
+  proba_column: "p_base"
+  # Optional: if you output logits instead, set transform: "logit"
+  score_space: "probability"
+
+calibration:
+  # Online / rolling calibration WITHOUT human labels.
+  method: "anchor_platt"   # sigmoid(a*logit(p_base)+b) fitted using anchors
+  by_band: true            # fit separate (a,b) per band; recommended for grey bands
+  clip_min: 1.0e-6
+  clip_max: 0.999999
+  platt:
+    l2: 1.0e-3
+    max_iter: 100
+    tol: 1.0e-10
+  safeguards:
+    clip_p_base:
+      min: 1.0e-6
+      max: 0.999999
+    clip_p_cal:
+      min: 1.0e-6
+      max: 0.999999
+    # prevent wild parameter jumps
+    max_abs_delta_a_per_window: 0.5
+    max_abs_delta_b_per_window: 0.5
+  output_column: "p_cal"
+
+guardrails:
+  # Deterministic safety rules (PII-free), to avoid catastrophic false positives.
+  params:
+    temporal_days: 180
+    nota_always_match: 10.0
+    nota_always_nonmatch: 3.0
+    homonimia_min_nota: 7.0
+    homonimia_year_gap: 5.0
+  always_match:
+    - "nota_final >= 9.0"
+  always_nonmatch:
+    - "nota_final <= 3.0"
+
+  # Soft blocks that force LLM_REVIEW (or NONMATCH in confirmacao) in risky situations
+  risky_if:
+    # Mother missing is dangerous in the grey zone (thesis: mother's name dominates grey-zone decisions)
+    - name: "grey_mother_missing"
+      when: "band in ['grey_low','grey_mid','grey_high'] and mae_missing == 1"
+      action: "LLM_REVIEW"
+
+    # Low name + low DOB together should almost never be accepted automatically
+    - name: "low_name_and_low_dob"
+      when: "nome_score_total < 0.25 and dtnasc_score_total < 0.25"
+      action: "NONMATCH"
+
+decision_policy:
+  # Core idea: expected-loss triage with an LLM budget.
+  # "costs" encode your institutional risk preferences.
+  modes:
+    vigilancia:
+      costs:
+        false_positive: 10.0
+        false_negative: 50.0
+        llm_review: 0.25
+      auto:
+        # optional hard caps to keep behavior sane under drift
+        min_auto_match_threshold: 0.85
+        max_auto_nonmatch_threshold: 0.15
+      llm_budget:
+        max_calls_per_window: 2000
+        selection_metric: "evr"   # expected value of review
+    confirmacao:
+      costs:
+        false_positive: 100.0
+        false_negative: 20.0
+        llm_review: 0.25
+      auto:
+        min_auto_match_threshold: 0.95
+        max_auto_nonmatch_threshold: 0.10
+      llm_budget:
+        max_calls_per_window: 1000
+        selection_metric: "evr"
+
+llm_review:
+  enabled: true
+  # Consensus protocol mirrors "2 reviewers + consensus" described in the thesis.
+  protocol: "dual_agent_plus_arbiter"
+  # You can use one model with different system instructions, or two different models.
+  model:
+    agent_a:
+      name: "gpt-5.2-pro"
+      temperature: 0.0
+      max_tokens: 500
+    agent_b:
+      name: "gpt-5.2-pro"
+      temperature: 0.0
+      max_tokens: 500
+    arbiter:
+      name: "gpt-5.2-pro"
+      temperature: 0.0
+      max_tokens: 500
+
+  dossier:
+    schema_version: "gzcmd_v3.dossier.1.0"
+    include_shap: true
+    include_safe_tokens: true
+    secure_record_view:
+      enabled: false   # set true only inside a secure enclave
+      pii_redaction: "strict"
+      pii_leak_guard: true
+
+  output:
+    schema_path: "schemas/gzcmd_v3_llm_output.schema.json"
+    must_return_json_only: true
+
+  reliability:
+    # Start with conservative assumptions; update online from LLM audits.
+    # Values are per-band (typical: LLM is best in grey_high and worst in grey_low).
+    error_rates_by_band:
+      grey_low:  { e_fp: 0.08, e_fn: 0.12 }
+      grey_mid:  { e_fp: 0.06, e_fn: 0.10 }
+      grey_high: { e_fp: 0.04, e_fn: 0.08 }
+      near_high: { e_fp: 0.02, e_fn: 0.06 }
+      low:       { e_fp: 0.10, e_fn: 0.15 }
+      high:      { e_fp: 0.01, e_fn: 0.03 }
+
+consistency:
+  # Optional "assignment-lite" constraints
+  enabled: true
+  strategy: "top1_per_left_then_top1_per_right"
+  conflict_margin_delta: 0.03     # if top-1 vs top-2 probabilities differ by less than this, send to LLM
+
+monitoring:
+  drift:
+    enabled: true
+    metrics:
+      psi:
+        threshold_warn: 0.15
+        threshold_critical: 0.25
+      ks:
+        threshold_warn: 0.10
+        threshold_critical: 0.20
+    slices:
+      - "band"
+      - "step"
+    monitored_fields:
+      - "nota_final"
+      - "p_base"
+      - "p_cal"
+      - "nome_score_total"
+      - "mae_score_total"
+      - "dtnasc_score_total"
+      - "endereco_score_total"
+      - "municipio_score"
+      - "mae_missing"
+  actions_on_critical_drift:
+    - "tighten_auto_thresholds"   # raise auto-match, lower auto-nonmatch
+    - "increase_llm_budget_if_possible"
+    - "emit_alert"
+    - "freeze_calibration"        # keep last (a,b) if current window is unstable
+
+logging:
+  level: "INFO"
+  audit_log_path: "runs/audit/"
+  store_dossiers: true
+  store_llm_traces: true
+  redact_logs: true
+
+evaluation:
+  test_size: 0.3
+  seeds: [42, 123, 456, 789, 2024]
+  split_by: "row"        # row | comprec | refrec
+  group_stratify: true

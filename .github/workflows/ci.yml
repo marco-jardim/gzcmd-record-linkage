@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Lint
+        run: |
+          ruff check src/gzcmd_record_linkage/cli.py tests
+
+      - name: Test suite
+        run: |
+          pytest
+          python -m pytest tests/test_cli.py::test_cli_module_help_smoke
+          pytest --cov=gzcmd_record_linkage.loader \
+            --cov=gzcmd_record_linkage.classifier \
+            --cov=gzcmd_record_linkage.bands \
+            --cov=gzcmd_record_linkage.guardrails \
+            --cov-fail-under=80
+
+      - name: Smoke entrypoints
+        run: |
+          python -m gzcmd_record_linkage --help
+          python - <<"PY"
+          import shutil
+
+          assert (
+              shutil.which("gzcmd")
+              or shutil.which("gzcmd_record_linkage")
+              or shutil.which("gzcmd_record_linkage_cli")
+          )
+          PY
+
+      - name: Build package
+        run: python -m build
