@@ -1,15 +1,20 @@
 [build-system]
-requires = ["hatchling>=1.27", "hatch-vcs>=0.4"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "gzcmd-record-linkage"
-dynamic = ["version"]
+version = "0.1.0"
 description = "Deterministic policy engine for clerical review linkage decision support"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
-authors = [{ name = "OpenCode" }]
+license = {text = "MIT"}
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+authors = [{ name = "Marco Jardim" }]
 dependencies = [
   "numpy>=1.26",
   "pandas>=2.1",
@@ -30,15 +35,10 @@ dev = [
 
 [project.scripts]
 gzcmd = "gzcmd_record_linkage.cli:main"
-gzcmd_record_linkage = "gzcmd_record_linkage.cli:main"
-gzcmd_record_linkage_cli = "gzcmd_record_linkage.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/"
-Source = "https://github.com/"
-
-[tool.hatch.version]
-source = "vcs"
+Homepage = "https://github.com/marco-jardim/gzcmd-record-linkage"
+Source = "https://github.com/marco-jardim/gzcmd-record-linkage"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gzcmd_record_linkage"]
