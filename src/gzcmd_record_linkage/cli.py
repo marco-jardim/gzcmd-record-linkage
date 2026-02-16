@@ -62,7 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument(
         "--p-cal",
-        choices=["fit_platt", "load_platt", "stub", "fit_ml_rf", "load_ml_rf"],
+        choices=[
+            "fit_platt",
+            "load_platt",
+            "stub",
+            "fit_ml_rf",
+            "load_ml_rf",
+            "fit_ml_xgb",
+            "load_ml_xgb",
+        ],
         default="fit_platt",
         help="How to compute p_cal (default: fit_platt)",
     )
@@ -85,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--save-ml-rf-model",
         default="",
         help="If set, save fitted ML RF model to this path",
+    )
+    run.add_argument(
+        "--ml-xgb-model",
+        default="",
+        help="Path to a saved ML XGBoost model (required for --p-cal load_ml_xgb)",
+    )
+    run.add_argument(
+        "--save-ml-xgb-model",
+        default="",
+        help="If set, save fitted ML XGBoost model to this path",
     )
 
     fit = sub.add_parser("fit-calibration", help="Fit and save Platt calibration")
@@ -155,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ev.add_argument(
         "--calibration",
-        choices=["platt", "stub", "ml_rf"],
+        choices=["platt", "stub", "ml_rf", "ml_xgb"],
         default="",
         help="Calibration method (default: platt)",
     )
@@ -219,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
             save_platt_model_path=(args.save_platt_model or None),
             ml_rf_model_path=(args.ml_rf_model or None),
             save_ml_rf_model_path=(args.save_ml_rf_model or None),
+            ml_xgb_model_path=(args.ml_xgb_model or None),
+            save_ml_xgb_model_path=(args.save_ml_xgb_model or None),
         )
 
         if args.output:

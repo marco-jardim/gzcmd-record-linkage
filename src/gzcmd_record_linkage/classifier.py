@@ -1,6 +1,6 @@
 """ML classifier integration for GZ-CMD.
 
-Wraps a scikit-learn pipeline (RandomForest + Platt Calibration) to provide
+Wraps a scikit-learn pipeline (XGBoost or RandomForest + Platt Calibration) to provide
 probability estimates based on the full feature set (aggregates + subscores + MACD).
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import joblib
 import numpy as np
@@ -22,12 +22,24 @@ from sklearn.pipeline import Pipeline
 
 from .loader import COL_TARGET
 
+ClassifierType = Literal["random_forest", "xgboost"]
+
 
 @dataclass(frozen=True)
 class ClassifierConfig:
+    classifier_type: ClassifierType = "xgboost"
+    # Random Forest parameters
     n_estimators: int = 200
     max_depth: int = 10
     class_weight: str | dict | None = "balanced"
+    # XGBoost parameters
+    xgb_learning_rate: float = 0.1
+    xgb_n_estimators: int = 300
+    xgb_max_depth: int = 6
+    xgb_scale_pos_weight: float | None = None
+    xgb_subsample: float = 0.8
+    xgb_colsample_bytree: float = 0.8
+    # Common parameters
     random_state: int = 42
     n_jobs: int = -1
     calibration_cv: int = 5
@@ -83,27 +95,51 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
         if y is None:
             if COL_TARGET not in df.columns:
                 raise ValueError(f"Target column '{COL_TARGET}' not found in DataFrame")
-            y = df[COL_TARGET]
+            y_raw = df[COL_TARGET]
+            y = pd.Series(y_raw) if not isinstance(y_raw, pd.Series) else y_raw
 
         self.features_ = get_feature_columns(df)
         X = df[self.features_]
 
-        # Base RF model
-        rf = RandomForestClassifier(
-            n_estimators=self.config.n_estimators,
-            max_depth=self.config.max_depth,
-            class_weight=self.config.class_weight,
-            random_state=self.config.random_state,
-            n_jobs=self.config.n_jobs,
-        )
+        # Select base classifier
+        if self.config.classifier_type == "xgboost":
+            # Lazy import to avoid hard dependency
+            from xgboost import XGBClassifier
 
-        # Pipeline: Impute -> Calibrated RF
+            # Auto-calculate scale_pos_weight if not provided
+            scale_pos_weight = self.config.xgb_scale_pos_weight
+            if scale_pos_weight is None:
+                n_neg = int((y == 0).sum())
+                n_pos = int((y == 1).sum())
+                scale_pos_weight = n_neg / n_pos if n_pos > 0 else 1.0
+
+            base_clf = XGBClassifier(
+                learning_rate=self.config.xgb_learning_rate,
+                n_estimators=self.config.xgb_n_estimators,
+                max_depth=self.config.xgb_max_depth,
+                scale_pos_weight=scale_pos_weight,
+                subsample=self.config.xgb_subsample,
+                colsample_bytree=self.config.xgb_colsample_bytree,
+                random_state=self.config.random_state,
+                n_jobs=self.config.n_jobs,
+                use_label_encoder=False,
+                eval_metric="logloss",
+            )
+        else:  # random_forest
+            base_clf = RandomForestClassifier(
+                n_estimators=self.config.n_estimators,
+                max_depth=self.config.max_depth,
+                class_weight=self.config.class_weight,
+                random_state=self.config.random_state,
+                n_jobs=self.config.n_jobs,
+            )
+
+        # Pipeline: Impute -> Calibrated classifier
         # We use CalibratedClassifierCV to get probabilities calibrated on the training set
-        # (via CV) or we could rely on RF probabilities and calibrate externally.
-        # Given the plan mentions Platt scaling, CalibratedClassifierCV(method='sigmoid') does exactly that.
+        # (via CV). CalibratedClassifierCV(method='sigmoid') applies Platt scaling.
 
-        calibrated_rf = CalibratedClassifierCV(
-            estimator=rf,
+        calibrated_clf = CalibratedClassifierCV(
+            estimator=base_clf,
             method="sigmoid",  # Platt scaling
             cv=self.config.calibration_cv,
             n_jobs=self.config.n_jobs,
@@ -112,7 +148,7 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
         self.pipeline_ = Pipeline(
             [
                 ("imputer", SimpleImputer(strategy="constant", fill_value=-1)),
-                ("classifier", calibrated_rf),
+                ("classifier", calibrated_clf),
             ]
         )
 

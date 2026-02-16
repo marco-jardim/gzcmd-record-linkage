@@ -14,7 +14,7 @@ from .calibration import (
     load_platt_model,
     save_platt_model,
 )
-from .classifier import GZCMDClassifier
+from .classifier import ClassifierConfig, GZCMDClassifier
 from .config import GZCMDConfig, load_config
 from .guardrails import apply_guardrails
 from .loader import LoadConfig, load_comparador_csv
@@ -103,6 +103,9 @@ def run_v3(
     save_platt_model_path: str | Path | None = None,
     ml_rf_model_path: str | Path | None = None,
     save_ml_rf_model_path: str | Path | None = None,
+    ml_xgb_model_path: str | Path | None = None,
+    save_ml_xgb_model_path: str | Path | None = None,
+    classifier_config: ClassifierConfig | None = None,
 ) -> tuple[pd.DataFrame, RunSummary]:
     cfg = load_config(config_path)
     df = load_comparador_csv(Path(input_csv), cfg=LoadConfig(macd_enabled=macd_enabled))
@@ -156,7 +159,8 @@ def run_v3(
             df, method="platt", model=model, clip_min=clip_min, clip_max=clip_max
         )
     elif p_cal == "fit_ml_rf":
-        clf = GZCMDClassifier()
+        config = classifier_config or ClassifierConfig(classifier_type="random_forest")
+        clf = GZCMDClassifier(config=config)
         clf.fit(df)
         probs = clf.predict_proba(df)[:, 1]
         df["p_cal"] = probs
@@ -168,8 +172,24 @@ def run_v3(
         clf = GZCMDClassifier.load(ml_rf_model_path)
         probs = clf.predict_proba(df)[:, 1]
         df["p_cal"] = probs
+    elif p_cal == "fit_ml_xgb":
+        config = classifier_config or ClassifierConfig(classifier_type="xgboost")
+        clf = GZCMDClassifier(config=config)
+        clf.fit(df)
+        probs = clf.predict_proba(df)[:, 1]
+        df["p_cal"] = probs
+        if save_ml_xgb_model_path is not None:
+            clf.save(save_ml_xgb_model_path)
+    elif p_cal == "load_ml_xgb":
+        if ml_xgb_model_path is None:
+            raise ValueError("ml_xgb_model_path is required when p_cal='load_ml_xgb'")
+        clf = GZCMDClassifier.load(ml_xgb_model_path)
+        probs = clf.predict_proba(df)[:, 1]
+        df["p_cal"] = probs
     else:
-        raise ValueError("p_cal must be one of: stub, fit_platt, load_platt, fit_ml_rf, load_ml_rf")
+        raise ValueError(
+            "p_cal must be one of: stub, fit_platt, load_platt, fit_ml_rf, load_ml_rf, fit_ml_xgb, load_ml_xgb"
+        )
 
     g = apply_guardrails(
         df,
