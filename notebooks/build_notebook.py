@@ -1022,12 +1022,287 @@ a política de custo esperado decidirá a ação final usando `p_cal`, banda e g
 # Montagem do notebook
 # ---------------------------------------------------------------------------
 # A ordem das fases reflete a construção incremental do plano (Wave 2).
+
+FASE_2_6: list[tuple[str, str]] = [
+    (
+        "md",
+        """
+## 11. Política de decisão (triagem)
+
+### Objetivos de aprendizagem
+
+Ao final desta seção, você será capaz de:
+
+- **explicar** por que a decisão final deve minimizar **custo esperado**, e não apenas
+  comparar `nota_final` ou `p_cal` com um limiar fixo;
+- **calcular** as perdas esperadas de `MATCH`, `NONMATCH` e `LLM_REVIEW` para um par;
+- **comparar** os modos `vigilancia` e `confirmacao`, reconhecendo a assimetria de custos
+  entre falso positivo e falso negativo;
+- **interpretar** quando vale a pena revisar um caso ambíguo com LLM.
+
+### Intuição
+
+A política de decisão não pergunta “a probabilidade passou de 0,5?”. Ela pergunta:
+**qual ação tem menor custo esperado para este modo de operação?**
+
+Se errar custa muito, a política pode escolher uma ação conservadora. Se revisar custa menos
+que errar, ela pode rotear o par para `LLM_REVIEW`. Isso é especialmente importante na zona
+cinzenta: pares próximos aos limiares não são ruins; eles são justamente os pares em que
+uma revisão adicional pode ter valor econômico.
+""",
+    ),
+    (
+        "md",
+        r"""
+### T2.6.2 — Custo esperado e valor esperado da revisão
+
+Para cada par, usamos $p$ como a probabilidade calibrada de match (`p_cal`). A política compara
+três perdas esperadas:
+
+- $loss\_match = (1-p)\,c\_{fp}$: custo esperado de aceitar como `MATCH`. Só pagamos esse custo
+  quando o par era, na verdade, não-match; por isso aparece $(1-p)$.
+- $loss\_non = p\,c\_{fn}$: custo esperado de rejeitar como `NONMATCH`. Só pagamos esse custo
+  quando o par era, na verdade, match; por isso aparece $p$.
+- $loss\_llm = c\_{llm} + (1-p)\,e\_{fp}\,c\_{fp} + p\,e\_{fn}\,c\_{fn}$: custo esperado de pedir
+  revisão. Ele soma o custo direto da revisão ($c\_{llm}$) com o erro residual esperado da LLM:
+  $e\_{fp}$ é a taxa residual de falso positivo após revisão e $e\_{fn}$ é a taxa residual de
+  falso negativo após revisão.
+
+A melhor decisão automática sem revisão é:
+
+- $base\_loss = \min(loss\_match, loss\_non)$;
+- $base\_choice = \operatorname{argmin}\{loss\_match, loss\_non\}$, ou seja, `MATCH` ou `NONMATCH`.
+
+O valor esperado da revisão é:
+
+- $evr = base\_loss - loss\_llm$.
+
+Se $evr > 0$ e ainda houver orçamento de revisão, revisar reduz o custo esperado; a ação final
+pode ser `LLM_REVIEW`. Caso contrário, a ação fica com `base_choice`. Portanto,
+`action ∈ {MATCH, NONMATCH, LLM_REVIEW}`.
+
+Os dois modos mudam os custos e os limites de automação:
+
+- **`vigilancia`**: $c\_{fp}=10$, $c\_{fn}=50$, `min_auto_match=0.85`,
+  `max_auto_nonmatch=0.15`, orçamento 2000. Prioriza **recall**: perder um match custa caro.
+- **`confirmacao`**: $c\_{fp}=100$, $c\_{fn}=20$, `min_auto_match=0.95`,
+  `max_auto_nonmatch=0.10`, orçamento 1000. Prioriza **precisão**: confirmar um falso match custa caro.
+""",
+    ),
+    (
+        "md",
+        """
+### T2.6.1 — Aplicar a política nos dois modos
+
+**Objetivo de aprendizagem.** Executar a triagem real do pacote, mantendo os dois modos
+separados.
+
+**Intuição.** O orçamento de revisão é estado interno do motor de política. Por isso usamos um
+engine por modo e passamos uma cópia defensiva do `df`.
+
+**Ação.** Construiremos `engine_vig` e `engine_conf` a partir da mesma configuração já carregada
+em `cfg`, chamaremos `.triage(df.copy())` e inspecionaremos as colunas decisórias.
+
+**Recap.** Depois desta célula teremos duas saídas alinhadas linha a linha: `out_vig` e
+`out_conf`.
+""",
+    ),
+    (
+        "code",
+        """from gzcmd_record_linkage.runner import build_engine_from_config
+
+engine_vig = build_engine_from_config(cfg, mode="vigilancia")
+out_vig = engine_vig.triage(df.copy())
+
+engine_conf = build_engine_from_config(cfg, mode="confirmacao")
+out_conf = engine_conf.triage(df.copy())
+
+out_vig[["nota_final", "band", "p_cal", "base_choice", "evr", "action"]].head()""",
+    ),
+    (
+        "md",
+        """
+### Como ler a saída da triagem
+
+A política acrescenta colunas que explicam a decisão:
+
+- `base_choice`: melhor ação automática antes da revisão (`MATCH` ou `NONMATCH`);
+- `base_loss`: custo esperado dessa melhor ação automática;
+- `loss_llm`: custo esperado de pedir revisão;
+- `evr`: valor esperado da revisão (`base_loss - loss_llm`);
+- `action`: ação final (`MATCH`, `NONMATCH` ou `LLM_REVIEW`);
+- `review_requested`: booleano que indica se o par foi roteado para revisão.
+
+**Recap.** `action` é a decisão operacional; as demais colunas explicam por que ela foi escolhida.
+""",
+    ),
+    (
+        "md",
+        """
+### T2.6.2 — Comparar a distribuição de ações
+
+**Objetivo de aprendizagem.** Quantificar como a assimetria de custos muda o volume de decisões.
+
+**Intuição.** Se `confirmacao` é mais conservador para falso positivo, esperamos menos `MATCH`
+automáticos do que em `vigilancia`.
+
+**Ação.** Contaremos `MATCH`, `NONMATCH` e `LLM_REVIEW` em cada modo e colocaremos tudo em uma
+tabela única.
+
+**Recap.** A tabela mostra a política como operação: quantos pares vão para cada rota.
+""",
+    ),
+    (
+        "code",
+        """ordem_acoes = ["MATCH", "NONMATCH", "LLM_REVIEW"]
+dist_acoes = (
+    pd.DataFrame(
+        {
+            "vigilancia": out_vig["action"].value_counts(),
+            "confirmacao": out_conf["action"].value_counts(),
+        }
+    )
+    .reindex(ordem_acoes)
+    .fillna(0)
+    .astype(int)
+)
+
+dist_acoes""",
+    ),
+    (
+        "md",
+        """
+### T2.6.3 — Visualizar a distribuição por modo
+
+**Objetivo de aprendizagem.** Ler rapidamente a diferença operacional entre os modos.
+
+**Intuição.** Barras agrupadas facilitam comparar a mesma ação sob custos diferentes.
+
+**Ação.** Desenharemos um gráfico de barras com as contagens de `MATCH`, `NONMATCH` e
+`LLM_REVIEW` para `vigilancia` e `confirmacao`.
+
+**Recap.** A figura deve deixar visível que mudar custos e limiares muda a política de decisão.
+""",
+    ),
+    (
+        "code",
+        """x = np.arange(len(ordem_acoes))
+largura = 0.35
+
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.bar(x - largura / 2, dist_acoes["vigilancia"], largura, label="vigilância", color="#4C72B0")
+ax.bar(x + largura / 2, dist_acoes["confirmacao"], largura, label="confirmação", color="#DD8452")
+
+ax.set_xticks(x)
+ax.set_xticklabels(ordem_acoes)
+ax.set_ylabel("número de pares")
+ax.set_xlabel("ação final")
+ax.set_title("Distribuição das ações de triagem por modo")
+ax.legend(title="modo")
+ax.grid(axis="y", alpha=0.25)
+plt.tight_layout()""",
+    ),
+    (
+        "md",
+        """
+### Pares que mudam de decisão entre modos
+
+**Objetivo de aprendizagem.** Identificar casos sensíveis à política, não apenas ao escore.
+
+**Intuição.** Perto dos limiares, pequenas mudanças de custo esperado podem trocar a ação final.
+Esses são pares de zona cinzenta: a evidência estatística é parecida, mas o contexto operacional
+pede outra decisão.
+
+**Ação.** Marcaremos as linhas em que `vigilancia` e `confirmacao` escolhem ações diferentes e
+exibiremos uma amostra lado a lado.
+
+**Recap.** Mudança de decisão não é inconsistência; é a política respondendo a objetivos diferentes.
+""",
+    ),
+    (
+        "code",
+        """mudou = out_vig["action"] != out_conf["action"]
+pares_mudam = pd.DataFrame(
+    {
+        "nota_final": df.loc[mudou, "nota_final"],
+        "band": df.loc[mudou, "band"],
+        "p_cal": df.loc[mudou, "p_cal"],
+        "acao_vigilancia": out_vig.loc[mudou, "action"],
+        "acao_confirmacao": out_conf.loc[mudou, "action"],
+        "evr_vigilancia": out_vig.loc[mudou, "evr"],
+        "evr_confirmacao": out_conf.loc[mudou, "evr"],
+    }
+)
+
+pares_mudam.head(8)""",
+    ),
+    (
+        "md",
+        """
+### Par herói: zona cinzenta sob duas políticas
+
+**Objetivo de aprendizagem.** Conectar a decisão agregada ao caso narrativo acompanhado desde o
+início do notebook.
+
+**Intuição.** O par herói (`zona_cinzenta`) é o melhor exemplo de por que triagem não é limiar
+fixo: ele pode ser tratado de forma diferente quando a organização prioriza recall ou precisão.
+
+**Ação.** Reutilizaremos `card_heroi(df, idx, colunas)` e compararemos a ação do mesmo par nos
+dois modos.
+
+**Recap.** A mesma evidência pode gerar ações diferentes quando o custo de errar muda.
+""",
+    ),
+    (
+        "code",
+        """cartao_heroi = card_heroi(
+    df,
+    hero_idx,
+    ["nota_final", "TARGET", "band", "p_cal", "guardrail", "guardrail_reason"],
+)
+acoes_heroi = pd.DataFrame(
+    {
+        "modo": ["vigilancia", "confirmacao"],
+        "action": [out_vig.loc[hero_idx, "action"], out_conf.loc[hero_idx, "action"]],
+        "base_choice": [out_vig.loc[hero_idx, "base_choice"], out_conf.loc[hero_idx, "base_choice"]],
+        "evr": [out_vig.loc[hero_idx, "evr"], out_conf.loc[hero_idx, "evr"]],
+        "review_requested": [
+            out_vig.loc[hero_idx, "review_requested"],
+            out_conf.loc[hero_idx, "review_requested"],
+        ],
+    }
+)
+
+display(cartao_heroi)
+acoes_heroi""",
+    ),
+    (
+        "md",
+        """
+### Recap da seção e o que vem a seguir
+
+A triagem fecha a Wave 2: agora o notebook tem bandas, calibração, guardrails e política de
+decisão por custo esperado. Vimos que:
+
+- `MATCH` e `NONMATCH` são comparados por perda esperada;
+- `LLM_REVIEW` entra quando o valor esperado da revisão compensa o custo e há orçamento;
+- `vigilancia` prioriza recall, enquanto `confirmacao` prioriza precisão;
+- pares de zona cinzenta podem mudar de ação entre modos sem que o modelo esteja “errado”.
+
+Na Wave 3, o próximo passo é reconciliar esta leitura didática com `run_v3` e medir desempenho
+em held-out: métricas finais, auditoria de decisões e comparação ponta a ponta.
+""",
+    ),
+]
+
+
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
     FASE_2_3,
     FASE_2_4,
     FASE_2_5,
+    FASE_2_6,
 ]
 
 

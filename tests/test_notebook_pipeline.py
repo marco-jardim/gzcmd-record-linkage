@@ -254,3 +254,53 @@ def test_tst_2_5_a_guardrails_disparam_com_motivos_corretos(
 
     for reason, guardrail in expected_reason_to_guardrail.items():
         assert observed_reason_to_guardrail[reason] == guardrail
+
+
+def _df_triagem_fase_2_6(df_loaded):
+    """Prepara as colunas consumidas pela política de triagem."""
+    from importlib.resources import files
+
+    from gzcmd_record_linkage.bands import BandAssigner
+    from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
+    from gzcmd_record_linkage.config import load_config
+    from gzcmd_record_linkage.guardrails import apply_guardrails
+
+    cfg = load_config(str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml"))
+    df_triagem = df_loaded.copy()
+    df_triagem["band"] = BandAssigner.from_config(cfg).assign(df_triagem["nota_final"])
+    model = fit_platt_from_df(df_triagem)
+    df_triagem["p_cal"] = compute_p_cal(df_triagem, method="platt", model=model)
+    gout = apply_guardrails(df_triagem)
+    df_triagem["guardrail"] = gout.guardrail
+    df_triagem["guardrail_reason"] = gout.reason
+    return cfg, df_triagem
+
+
+def test_tst_2_6_a_confirmacao_e_mais_conservadora_que_vigilancia(df_loaded):
+    from gzcmd_record_linkage.runner import build_engine_from_config
+
+    cfg, df_triagem = _df_triagem_fase_2_6(df_loaded)
+    out_vig = build_engine_from_config(cfg, mode="vigilancia").triage(df_triagem.copy())
+    out_conf = build_engine_from_config(cfg, mode="confirmacao").triage(
+        df_triagem.copy()
+    )
+
+    acoes_validas = {"MATCH", "NONMATCH", "LLM_REVIEW"}
+    assert set(out_vig["action"].unique()) <= acoes_validas
+    assert set(out_conf["action"].unique()) <= acoes_validas
+    assert (out_conf["action"] == "MATCH").sum() <= (out_vig["action"] == "MATCH").sum()
+
+
+def test_tst_2_6_b_modos_mudam_decisoes_e_respeitam_orcamento(df_loaded):
+    from gzcmd_record_linkage.runner import build_engine_from_config
+
+    cfg, df_triagem = _df_triagem_fase_2_6(df_loaded)
+    engine_vig = build_engine_from_config(cfg, mode="vigilancia")
+    engine_conf = build_engine_from_config(cfg, mode="confirmacao")
+
+    out_vig = engine_vig.triage(df_triagem.copy())
+    out_conf = engine_conf.triage(df_triagem.copy())
+
+    assert (out_vig["action"] != out_conf["action"]).any()
+    assert engine_vig.budget.llm_used <= engine_vig.budget.llm_max
+    assert engine_conf.budget.llm_used <= engine_conf.budget.llm_max
