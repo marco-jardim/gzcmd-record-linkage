@@ -586,7 +586,30 @@ Princípios que o notebook **deve** seguir (auditados no eixo 10 do QA):
 
 > Registrar aqui: suposições adotadas (D1), desvios do plano, decisões DEC resolvidas, achados de QA e suas correções, e qualquer parada por ambiguidade/bloqueio.
 
-- _(vazio — a ser preenchido pela execução)_
+### Suposições e desvios (D1)
+- **Fase 0.1 — sem `.venv` dedicada.** Usado o ambiente editável já instalado (miniconda base) em vez de criar `.venv`. Resultado funcional idêntico; shell não-interativo não persiste ativação. Comandos de `venv` documentados no `notebooks/README.md` para o usuário final. `pyproject [project]` **não** alterado (D7 respeitado).
+- **`pyright` não instalado** (extra `dev` requer Node). Não-bloqueante: o `ruff` é o gate de lint do QA (eixo 5).
+- **Contrato de API verificado por execução** (`docs/plans/qa/contrato-api.md`) — autoritativo. Desvios vs. texto do plano confirmados no código: (i) `triage` **retorna cópia** (não muta o df de entrada); (ii) guardrail `ALWAYS_MATCH` exige `nota_final ≥ 10` + nome/data/município perfeitos (não `≥ 9`). Notebook e gerador seguem o **código** (ground truth).
+
+### Decisões DEC resolvidas
+- **DEC-01** gerador em `notebooks/` + `pythonpath=["src","notebooks"]`. ✅
+- **DEC-02** Platt principal; **apêndice XGBoost mantido markdown-only** (não executado) por R-13 (não-determinismo) + escopo. 📝
+- **DEC-03** `.ipynb` limpo versionado; artefato `*.executed.ipynb` (507 KB) gerado em `docs/plans/qa/`, **não** versionado (`.gitignore`). ✅
+- **DEC-06** posterior verdadeira `p*(x)=σ(0.85·(nota−s0))`, `TARGET~Bernoulli(p*)`; coluna de validação `p_true` nunca entra no pipeline. ✅ (Platt recupera `p*` com MAE ~0.009 in-sample / ECE pequeno held-out.)
+- **DEC-07** rotas A (fiel/in-sample) e B (correta/held-out) explícitas. ✅
+- **DEC-08** ECE + Brier em `nb_helpers` com testes fechados. ✅
+- **DEC-10** `ipywidgets` interativo **não implementado** (opcional por plano; não pode ser pré-requisito da execução headless). 📝 Backlog.
+
+### Achados de QA e correções
+- **Fase 3.2 (eixo 9):** demo de vazamento `row` vs grupo mostrou efeito **negligenciável** (grupos majoritariamente singletons). Corrigido para **medir e explicar com honestidade** o mecanismo (sem forjar inflação). 📝 (R-12.)
+- **Fase 4.1:** corrigido LaTeX da seção 11 (subscritos `c_{fp}` etc. renderizavam literalmente); `value_counts` de bandas com `reindex(fill_value=0)`; simplificação de agregação de flags. Backlog 🟢 zerado.
+- **R-11** (config × código: `anchor_platt`/`by_band` não implementados) declarado no notebook (seção 9.6).
+- **R-05** estágio LLM por **stub determinístico** (`llm_review_stub`), sem rede; honestidade explícita de que é simulação.
+
+### Gate final
+- **DF-1/DF-2/DF-3** satisfeitos (`pytest` 101 passed + `nbconvert` exit 0; `conformidade-final.md`; `auditoria-didatica.md` + `test_notebook_didatica.py`).
+- **QA Global** assinado em `docs/plans/qa/REVIEW-GLOBAL.md` (sem 🔴/🟡; 🟢 = DEC-10/DEC-02 backlog).
+- Nenhuma parada por ambiguidade/bloqueio crítico durante a execução.
 
 ---
 
