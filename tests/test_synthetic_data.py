@@ -176,3 +176,87 @@ def test_group_aware_split_has_no_group_leakage_and_is_deterministic() -> None:
         )
         np.testing.assert_array_equal(train_idx, train_idx_again)
         np.testing.assert_array_equal(test_idx, test_idx_again)
+
+
+def _scenario_csv(tmp_path):
+    dataset = sd.generate_comparador(seed=123, n_pairs=40, scenarios="all")
+    csv_path = tmp_path / "comparador_scenarios.csv"
+    sd.to_comparador_csv(dataset.frame, csv_path)
+    return dataset, csv_path
+
+
+def _config_path() -> str:
+    from importlib.resources import files
+
+    return str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
+
+
+def test_tst_1_2_a_scenarios_have_expected_bands(tmp_path):
+    from gzcmd_record_linkage.bands import BandAssigner
+    from gzcmd_record_linkage.config import load_config
+    from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
+
+    _, csv_path = _scenario_csv(tmp_path)
+    df = load_comparador_csv(csv_path, cfg=LoadConfig())
+    bands = BandAssigner.from_config(load_config(_config_path())).assign(
+        df["nota final"]
+    )
+
+    expected = {
+        "match_obvio": "high",
+        "nonmatch_obvio": "low",
+        "homonimo": "grey_high",
+        "obito_antes_diag": "grey_mid",
+        "mae_ausente": "grey_mid",
+        "datas_invertidas": "grey_mid",
+        "zona_cinzenta": "grey_mid",
+    }
+    for name, band in expected.items():
+        row_index = df.index[df["COMPREC"] == f"SCEN-{name}"][0]
+        assert bands.loc[row_index] == band
+
+
+def test_tst_1_2_b_scenarios_trigger_expected_guardrails(tmp_path):
+    from gzcmd_record_linkage.guardrails import apply_guardrails
+    from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
+
+    _, csv_path = _scenario_csv(tmp_path)
+    df = load_comparador_csv(csv_path, cfg=LoadConfig())
+    guardrails = apply_guardrails(df)
+    row_by_comprec = {value: index for index, value in df["COMPREC"].items()}
+
+    expected = {
+        "match_obvio": ("ALWAYS_MATCH", "nota_final_high"),
+        "nonmatch_obvio": ("ALWAYS_NONMATCH", "nota_final_low"),
+        "homonimo": ("FORCE_REVIEW", "homonimia_risk"),
+        "obito_antes_diag": ("ALWAYS_NONMATCH", "temporal_filter"),
+    }
+    for name, (guardrail, reason) in expected.items():
+        row_index = row_by_comprec[f"SCEN-{name}"]
+        assert guardrails.guardrail.loc[row_index] == guardrail
+        assert guardrails.reason.loc[row_index] == reason
+
+
+def test_tst_1_2_c_zona_cinzenta_routes_to_llm_review(tmp_path):
+    from gzcmd_record_linkage.runner import run_v3
+
+    _, csv_path = _scenario_csv(tmp_path)
+    out_df, _ = run_v3(
+        input_csv=csv_path,
+        config_path=_config_path(),
+        mode="confirmacao",
+    )
+    row = out_df.loc[out_df["COMPREC"] == "SCEN-zona_cinzenta"].iloc[0]
+
+    assert row["action"] == "LLM_REVIEW"
+
+
+def test_tst_1_2_d_scenarios_are_deterministic_and_indexed():
+    first = sd.generate_comparador(seed=123, n_pairs=40, scenarios="all")
+    second = sd.generate_comparador(seed=123, n_pairs=40, scenarios="all")
+
+    assert first.frame.equals(second.frame)
+    assert first.meta["scenarios"] == {
+        name: 40 + index for index, name in enumerate(sd.SCENARIO_NAMES)
+    }
+    assert set(first.meta["scenarios"]) == set(sd.SCENARIO_NAMES)

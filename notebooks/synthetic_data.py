@@ -15,6 +15,203 @@ R_DTNASC = "R_DTNASC,C,8,0"
 C_DTNASC = "C_DTNASC,C,8,0"
 R_DTOBITO = "R_DTOBITO,C,10,0"
 C_DTDIAG = "C_DTDIAG,C,10,0"
+SCENARIO_NAMES = (
+    "match_obvio",
+    "nonmatch_obvio",
+    "homonimo",
+    "obito_antes_diag",
+    "mae_ausente",
+    "datas_invertidas",
+    "zona_cinzenta",
+)
+
+
+_BASE_SCENARIO_VALUES: dict[str, object] = {
+    "PASSO": 1,
+    "NOME qtd frag iguais": 0.5,
+    "NOME prim frag igual": 0,
+    "NOME ult frag igual": 0,
+    "NOME prim ult frag igual": 0,
+    "NOMEMAE qtd frag iguais": 0.5,
+    "NOMEMAE prim frag igual": 0,
+    "NOMEMAE ult frag igual": 0,
+    "NOMEMAE prim ult frag igual": 0,
+    "DTNASC dt iguais": 0,
+    "DTNASC dt ap 1digi": 0,
+    "DTNASC dt inv dia": 0,
+    "DTNASC dt inv mes": 0,
+    "DTNASC dt inv ano": 0,
+    "ENDERECO via igual": 0.5,
+    "ENDERECO via prox": 0.5,
+    "ENDERECO numero igual": 0.5,
+    "ENDERECO compl prox": 0.5,
+    "ENDERECO texto prox": 0.5,
+    "ENDERECO tokens jaccard": 0.5,
+    "CODMUNRES local igual": 0,
+    R_DTNASC: "19800510",
+    C_DTNASC: "19800510",
+    R_DTOBITO: "01012022",
+    C_DTDIAG: "20200101",
+}
+
+
+def _resolve_scenarios(scenarios: object | None) -> tuple[str, ...]:
+    if scenarios is None:
+        return ()
+    if scenarios == "all":
+        return SCENARIO_NAMES
+    if isinstance(scenarios, str):
+        names = (scenarios,)
+    else:
+        try:
+            names = tuple(iter(scenarios))
+        except TypeError as exc:
+            msg = "scenarios deve ser None, 'all' ou iterável de nomes"
+            raise ValueError(msg) from exc
+
+    unknown = sorted(set(names) - set(SCENARIO_NAMES))
+    if unknown:
+        raise ValueError(f"cenários desconhecidos: {', '.join(unknown)}")
+    return names
+
+
+def _scenario_row(name: str) -> dict[str, object]:
+    row = dict(_BASE_SCENARIO_VALUES)
+    row.update({COMPREC: f"SCEN-{name}", REFREC: f"SREF-{name}"})
+
+    if name == "match_obvio":
+        row.update(
+            {
+                "PAR": 1,
+                "TARGET": 1,
+                "nota final": 10.0,
+                "NOME qtd frag iguais": 1.0,
+                "NOME prim frag igual": 1,
+                "NOME ult frag igual": 1,
+                "NOME prim ult frag igual": 1,
+                "DTNASC dt iguais": 1,
+                "CODMUNRES local igual": 1,
+                "NOMEMAE qtd frag iguais": 1.0,
+                "NOMEMAE prim frag igual": 1,
+                "NOMEMAE ult frag igual": 1,
+                "NOMEMAE prim ult frag igual": 1,
+                "ENDERECO via igual": 0.95,
+                "ENDERECO via prox": 0.95,
+                "ENDERECO numero igual": 0.95,
+                "ENDERECO compl prox": 0.95,
+                "ENDERECO texto prox": 0.95,
+                "ENDERECO tokens jaccard": 0.95,
+            }
+        )
+    elif name == "nonmatch_obvio":
+        row.update(
+            {
+                "PAR": 0,
+                "TARGET": 0,
+                "nota final": 1.0,
+                R_DTNASC: "19800510",
+                C_DTNASC: "19550510",
+                "NOME qtd frag iguais": 0.0,
+                "NOME prim frag igual": 0,
+                "NOME ult frag igual": 0,
+                "NOME prim ult frag igual": 0,
+                "NOMEMAE qtd frag iguais": 0.0,
+                "NOMEMAE prim frag igual": 0,
+                "NOMEMAE ult frag igual": 0,
+                "NOMEMAE prim ult frag igual": 0,
+                "ENDERECO via igual": 0.0,
+                "ENDERECO via prox": 0.0,
+                "ENDERECO numero igual": 0.0,
+                "ENDERECO compl prox": 0.0,
+                "ENDERECO texto prox": 0.0,
+                "ENDERECO tokens jaccard": 0.0,
+            }
+        )
+    elif name == "homonimo":
+        row.update(
+            {
+                "PAR": 0,
+                "TARGET": 0,
+                "nota final": 7.5,
+                R_DTNASC: "19800315",
+                C_DTNASC: "19710802",
+                "NOME qtd frag iguais": 0.9,
+                "NOME prim frag igual": 1,
+                "NOME ult frag igual": 1,
+                "NOMEMAE qtd frag iguais": 0.6,
+                "NOMEMAE prim frag igual": 1,
+                "NOMEMAE ult frag igual": 0,
+                "ENDERECO via igual": 0.0,
+                "ENDERECO via prox": 0.0,
+                "ENDERECO numero igual": 0.0,
+                "ENDERECO compl prox": 0.0,
+                "ENDERECO texto prox": 0.0,
+                "ENDERECO tokens jaccard": 0.0,
+            }
+        )
+    elif name == "obito_antes_diag":
+        row.update(
+            {
+                "PAR": 0,
+                "TARGET": 0,
+                "nota final": 6.0,
+                "DTNASC dt iguais": 1,
+                R_DTOBITO: "01012010",
+                C_DTDIAG: "20200101",
+            }
+        )
+    elif name == "mae_ausente":
+        row.update(
+            {
+                "PAR": 1,
+                "TARGET": 1,
+                "nota final": 6.5,
+                "NOME qtd frag iguais": 0.8,
+                "NOME prim frag igual": 1,
+                "DTNASC dt iguais": 1,
+                "NOMEMAE qtd frag iguais": 0.0,
+                "NOMEMAE prim frag igual": 0,
+                "NOMEMAE ult frag igual": 0,
+                "NOMEMAE prim ult frag igual": 0,
+                "CODMUNRES local igual": 1,
+            }
+        )
+    elif name == "datas_invertidas":
+        row.update(
+            {
+                "PAR": 1,
+                "TARGET": 1,
+                "nota final": 6.8,
+                R_DTNASC: "19800312",
+                C_DTNASC: "19801203",
+                "NOME qtd frag iguais": 0.9,
+                "NOME prim frag igual": 1,
+                "NOME ult frag igual": 1,
+                "NOMEMAE qtd frag iguais": 0.6,
+                "NOMEMAE prim frag igual": 1,
+                "DTNASC dt inv dia": 1,
+                "DTNASC dt inv mes": 1,
+                "CODMUNRES local igual": 1,
+            }
+        )
+    elif name == "zona_cinzenta":
+        row.update(
+            {
+                "PAR": 1,
+                "TARGET": 1,
+                "nota final": 6.5,
+                R_DTNASC: "19800315",
+                C_DTNASC: "19800316",
+                "NOME qtd frag iguais": 0.6,
+                "NOME prim frag igual": 1,
+                "DTNASC dt ap 1digi": 1,
+                "CODMUNRES local igual": 1,
+            }
+        )
+    else:
+        raise ValueError(f"cenário desconhecido: {name}")
+
+    return row
 
 
 @dataclass(frozen=True)
@@ -116,11 +313,17 @@ def generate_comparador(
 
     O escore ``nota final`` é amostrado antes do rótulo e define o posterior
     verdadeiro por ``sigmoid(a_true * (nota_final - s0))``. Assim, a calibração
-    Platt usada pela biblioteca é recuperável sem circularidade. O parâmetro
-    ``scenarios`` é aceito para compatibilidade com fases futuras e ainda não é
-    aplicado.
+    Platt usada pela biblioteca é recuperável sem circularidade.
+
+    Quando ``scenarios`` é informado, linhas narrativas nomeadas são anexadas
+    após os pares aleatórios. O ``s0`` continua ajustado só nos pares aleatórios,
+    mas o ``p_true`` é calculado pela mesma sigmoide para todas as linhas. Para
+    fins didáticos, ``PAR``/``TARGET`` das linhas narrativas recebem rótulos
+    fixos calibrados para exercitar guardrails e triagem; em especial,
+    ``mae_ausente`` documenta a flag de mãe ausente e a regra cinza de mãe
+    ausente do config que ainda não foi implementada no código (R-11).
     """
-    del scenarios
+    scenario_names = _resolve_scenarios(scenarios)
 
     if n_pairs <= 0:
         raise ValueError("n_pairs deve ser positivo")
@@ -243,7 +446,17 @@ def generate_comparador(
             "CODMUNRES local igual": _bernoulli(rng, q),
         }
     )
-    p_true = pd.Series(p_values, index=frame.index, name="p_true")
+    scenario_positions: dict[str, int] = {}
+    if scenario_names:
+        scenario_frame = pd.DataFrame([_scenario_row(name) for name in scenario_names])
+        frame = pd.concat([frame, scenario_frame], ignore_index=True)
+        scenario_positions = {
+            name: n_pairs + offset for offset, name in enumerate(scenario_names)
+        }
+
+    all_scores = frame["nota final"].to_numpy(dtype=float)
+    all_p_values = np.clip(_sigmoid(a_true * (all_scores - s0)), 1e-6, 1.0 - 1e-6)
+    p_true = pd.Series(all_p_values, index=frame.index, name="p_true")
     meta = {
         "seed": seed,
         "n_pairs": n_pairs,
@@ -254,6 +467,7 @@ def generate_comparador(
         "true_intercept": float(-a_true * s0),
         "true_slope": a_true,
     }
+    meta["scenarios"] = scenario_positions
     return SyntheticDataset(frame=frame, p_true=p_true, meta=meta)
 
 
