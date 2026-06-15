@@ -325,12 +325,187 @@ elegemos um par **herói** para acompanhar. **A seguir:** carregar o CSV pelo
 ]
 
 
+# ===========================================================================
+# FASE 2.2 — Carga e Feature Engineering
+# ===========================================================================
+FASE_2_2: list[tuple[str, str]] = [
+    (
+        "md",
+        """\
+## 7. Carga dos dados e *feature engineering*
+
+**Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
+
+- **explicar** o que o `loader` faz ao ler o CSV cru (resolução de colunas, *parsing* de datas);
+- **identificar** os três grupos de colunas que ele produz: **agregados**, **flags** e **MACD**;
+- **interpretar** a distribuição da `nota_final` por classe (match × não-match) e por que as classes **se sobrepõem**.
+
+**Intuição.** O comparador entrega dezenas de subscores crus (frações de fragmentos
+de nome iguais, comparações de data, proximidade de endereço…). Trabalhar com todos
+eles, um a um, é inviável e ruidoso. O `loader` então **agrega** subscores correlatos
+em poucos escores por dimensão (nome, data, endereço, município), cria **flags**
+de ausência/risco e, opcionalmente, *features* **MACD** (interações entre nome
+perfeito e distância temporal). Esse é o material sobre o qual o resto do pipeline opera.
+
+**O que vamos fazer a seguir.** Carregar o CSV que salvamos com a função real
+`load_comparador_csv` e inspecionar cada grupo de colunas que ela engenheira.""",
+    ),
+    (
+        "code",
+        """\
+from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
+
+df = load_comparador_csv(CSV_PATH, cfg=LoadConfig(macd_enabled=True))
+print(f"Linhas: {len(df)} | Colunas: {df.shape[1]}")
+print(f"TARGET derivado de PAR -> positivos: {int(df['TARGET'].sum())} / {len(df)}")""",
+    ),
+    (
+        "md",
+        """\
+### 7.1 Colunas **agregadas** (subscores resumidos por dimensão)
+
+O `loader` combina os subscores crus em escores compactos no intervalo **[0, 1]**:
+
+| Coluna agregada | Como é formada (resumo) |
+|-----------------|--------------------------|
+| `nome_score_total` | combinação ponderada dos fragmentos de **nome** iguais. |
+| `mae_score_total` | idem para o **nome da mãe**. |
+| `dtnasc_score_total` | média das comparações de **data de nascimento**. |
+| `endereco_score_total` | média dos subscores de **endereço**. |
+| `municipio_score` | indicador de **município** coincidente. |
+
+A célula abaixo mostra esses agregados ao lado da `nota_final` e do `TARGET`.""",
+    ),
+    (
+        "code",
+        """\
+colunas_agregadas = [
+    "nota_final",
+    "TARGET",
+    "nome_score_total",
+    "mae_score_total",
+    "dtnasc_score_total",
+    "endereco_score_total",
+    "municipio_score",
+]
+df[colunas_agregadas].describe().T[["mean", "min", "max"]].round(3)""",
+    ),
+    (
+        "md",
+        """\
+### 7.2 **Flags** de ausência/risco e *features* **MACD**
+
+Além dos agregados, o `loader` cria **flags** binárias que sinalizam situações de
+risco (consumidas adiante pelos *guardrails*):
+
+| Flag | Significado |
+|------|-------------|
+| `mae_missing` | `1` quando **todos** os subscores do nome da mãe são zero (nome da mãe ausente). |
+| `dtnasc_all_zero` | `True` quando nenhuma comparação de data de nascimento "pegou". |
+| `endereco_zero` | `1` quando todos os subscores de endereço são zero. |
+| `diff_ano` | diferença absoluta de **ano** de nascimento entre os registros. |
+
+As colunas **MACD** (ativadas por `LoadConfig(macd_enabled=True)`) capturam
+**interações** — por exemplo, `macd_nome_perf_x_date_far` marca o caso perigoso de
+**nome perfeito porém datas distantes** (forte sinal de homonímia). A célula abaixo
+lista as colunas MACD presentes.""",
+    ),
+    (
+        "code",
+        """\
+flags = ["mae_missing", "dtnasc_all_zero", "endereco_zero", "diff_ano"]
+macd_cols = sorted(c for c in df.columns if c.startswith("macd_"))
+print("Flags (amostra de contagens):")
+print(df[flags].apply(lambda s: s.astype(float)).agg(["mean", "max"]).round(3).T)
+print(f"\\nColunas MACD presentes ({len(macd_cols)}):")
+for c in macd_cols:
+    print(f"  - {c}")""",
+    ),
+    (
+        "md",
+        """\
+### 7.3 Visualização: distribuição da `nota_final` por classe
+
+**Pergunta que a figura responde:** *as notas separam perfeitamente matches de
+não-matches?* Se separassem, não haveria zona cinzenta — nem necessidade de
+calibração ou de revisão. Esperamos ver **sobreposição** na faixa intermediária:
+é exatamente onde a decisão é difícil (e onde o dataset sintético foi desenhado para
+ter ambiguidade real, evitando circularidade).""",
+    ),
+    (
+        "code",
+        """\
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(8, 4.5))
+bins = [i * 0.5 for i in range(0, 23)]  # 0.0 .. 11.0 em passos de 0.5
+ax.hist(
+    df.loc[df["TARGET"] == 0, "nota_final"],
+    bins=bins,
+    alpha=0.6,
+    label="não-match (TARGET=0)",
+    color="#4C72B0",
+)
+ax.hist(
+    df.loc[df["TARGET"] == 1, "nota_final"],
+    bins=bins,
+    alpha=0.6,
+    label="match (TARGET=1)",
+    color="#C44E52",
+)
+ax.set_xlabel("nota_final (escore agregado de similaridade)")
+ax.set_ylabel("frequência (nº de pares)")
+ax.set_title("Distribuição da nota_final por classe — note a sobreposição na zona cinzenta")
+ax.legend()
+fig.tight_layout()
+plt.show()""",
+    ),
+    (
+        "md",
+        """\
+### 7.4 O herói após a *feature engineering*
+
+Reencontramos nosso par **herói** (`zona_cinzenta`), agora com as colunas
+engenheiradas. Repare na `nota_final` intermediária e nos escores parciais — é um
+caso genuinamente ambíguo.""",
+    ),
+    (
+        "code",
+        """\
+card_heroi(
+    df,
+    hero_idx,
+    [
+        "nota_final",
+        "TARGET",
+        "nome_score_total",
+        "mae_score_total",
+        "dtnasc_score_total",
+        "municipio_score",
+        "mae_missing",
+        "diff_ano",
+    ],
+)""",
+    ),
+    (
+        "md",
+        """\
+**Recap da seção.** Carregamos o CSV com o `loader` real e vimos como ele transforma
+dezenas de subscores crus em **agregados** [0,1], **flags** de risco e *features*
+**MACD**. A figura confirmou a **sobreposição** das classes na zona cinzenta — a
+razão de ser de todo o pipeline. **A seguir:** transformar a `nota_final` contínua
+em **bandas** discretas com o `BandAssigner`.""",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Montagem do notebook
 # ---------------------------------------------------------------------------
 # A ordem das fases reflete a construção incremental do plano (Wave 2).
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
+    FASE_2_2,
 ]
 
 
