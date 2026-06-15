@@ -117,15 +117,85 @@ def brier_score(
     return float(np.mean((p - y) ** 2))
 
 
+#: Taxas de erro de fallback (banda ausente em ``error_rates_by_band``).
+#: Espelham a banda mais pessimista da config (``low``): e_fp=0.10, e_fn=0.15.
+_FALLBACK_ERROR_RATES: dict[str, float] = {"e_fp": 0.10, "e_fn": 0.15}
+
+
 def llm_review_stub(
     df_review: pd.DataFrame,
     *,
     seed: int = 42,
     error_rates_by_band: Mapping[str, Mapping[str, float]] | None = None,
+    target_col: str = "TARGET",
+    band_col: str = "band",
 ) -> pd.Series:
     """Stub determinístico da revisão clerical/LLM (R-05 / Fase 3.3).
 
-    Decide MATCH/NONMATCH para os pares roteados a ``LLM_REVIEW`` usando as taxas
-    de erro por banda da config (e_fp/e_fn). Determinístico por ``seed``; SEM rede.
+    **Isto é uma SIMULAÇÃO, não um LLM real.** Não há chamada de rede nem modelo
+    de linguagem. O stub representa um revisor *quase-oráculo*: ele "enxerga" o
+    rótulo verdadeiro (``target_col``) e devolve a decisão correta na maioria das
+    vezes, mas **erra com taxas dependentes da banda** — exatamente o perfil de
+    confiabilidade que a config atribui ao revisor (``e_fp``/``e_fn`` por banda).
+    Serve para demonstrar, de forma reprodutível e offline, o *efeito* da etapa
+    de revisão sobre as métricas finais, sem depender de uma API ao vivo.
+
+    Mecânica (determinística por ``seed``):
+
+    - Sorteia-se ``u ~ Uniforme(0, 1)`` para cada linha, **em ordem de linha**,
+      com ``np.random.default_rng(seed)`` (uma única sequência → reprodutível).
+    - Para uma banda ``b``, usa ``rates = error_rates_by_band[b]`` (ou o fallback
+      ``{e_fp: 0.10, e_fn: 0.15}`` se a banda não estiver no mapa).
+    - Se o rótulo verdadeiro é MATCH (``target == 1``): o revisor erra (diz
+      ``NONMATCH``) quando ``u < e_fn``; senão acerta (``MATCH``).
+    - Se o rótulo verdadeiro é NÃO-MATCH (``target == 0``): o revisor erra (diz
+      ``MATCH``) quando ``u < e_fp``; senão acerta (``NONMATCH``).
+
+    Parameters
+    ----------
+    df_review:
+        Subconjunto de pares roteados a ``LLM_REVIEW``. Precisa conter
+        ``target_col`` (rótulo verdadeiro, ``{0, 1}``) e ``band_col`` (nome da
+        banda). A ordem das linhas determina o sorteio (reprodutibilidade).
+    seed:
+        Semente do gerador. Mesma semente + mesmo ``df_review`` → mesma saída.
+    error_rates_by_band:
+        Mapa ``{banda: {"e_fp": float, "e_fn": float}}`` (tipicamente
+        ``cfg.llm_review.error_rates_by_band``). Se ``None``, usa o fallback
+        para todas as linhas.
+    target_col, band_col:
+        Nomes das colunas de rótulo verdadeiro e banda.
+
+    Returns
+    -------
+    pd.Series
+        Decisões em ``{"MATCH", "NONMATCH"}``, dtype ``string``, alinhadas ao
+        ``df_review.index``. Série vazia se ``df_review`` for vazio.
     """
-    raise NotImplementedError("Implementado na Fase 3.3.")
+    if target_col not in df_review.columns:
+        raise KeyError(f"df_review precisa da coluna de rótulo '{target_col}'.")
+    if band_col not in df_review.columns:
+        raise KeyError(f"df_review precisa da coluna de banda '{band_col}'.")
+
+    rates_by_band = error_rates_by_band or {}
+    n = len(df_review)
+    if n == 0:
+        return pd.Series([], dtype="string", index=df_review.index)
+
+    rng = np.random.default_rng(seed)
+    u = rng.random(n)  # uma sequência, em ordem de linha → determinística
+
+    targets = df_review[target_col].to_numpy()
+    bands = df_review[band_col].to_numpy()
+
+    decisions: list[str] = []
+    for i in range(n):
+        rates = rates_by_band.get(str(bands[i]), _FALLBACK_ERROR_RATES)
+        e_fp = float(rates["e_fp"])
+        e_fn = float(rates["e_fn"])
+        if int(targets[i]) == 1:
+            decisions.append("NONMATCH" if u[i] < e_fn else "MATCH")
+        else:
+            decisions.append("MATCH" if u[i] < e_fp else "NONMATCH")
+
+    return pd.Series(decisions, index=df_review.index, dtype="string")

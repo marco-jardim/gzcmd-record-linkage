@@ -1640,6 +1640,112 @@ A prevalência também importa. Quando a taxa-base de `MATCH` é baixa, pequenas
 ]
 
 
+FASE_3_3 = [
+    (
+        "md",
+        """## 14. Revisão LLM (stub determinístico)
+
+**Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **explicar** o papel da revisão clerical/LLM na zona cinzenta, **descrever** o protocolo `dual_agent_plus_arbiter`, **simular** a revisão de forma determinística e offline, e **medir** seu efeito sobre as decisões finais — sem confundir simulação com um LLM real.
+
+**Intuição.** A política de triagem não decide tudo sozinha: os pares mais ambíguos saem como `LLM_REVIEW` para inspeção assistida. Numa operação real, um modelo de linguagem (ou um par de revisores humanos) examinaria o dossiê de cada par e devolveria `MATCH`/`NONMATCH`. Aqui **não chamamos nenhuma API** — isso quebraria a reprodutibilidade e exigiria rede na apresentação (R-05).
+
+**O protocolo `dual_agent_plus_arbiter` (conceitual).** A config descreve um protocolo de consenso: dois agentes (A e B) revisam o mesmo dossiê de forma independente; se concordam, a decisão é aceita; se discordam, um terceiro agente **árbitro** desempata. A ideia espelha o esquema "2 revisores + consenso" e reduz a variância de um único revisor.
+
+> **Honestidade científica (R-05 / CA-G6).** O que usamos abaixo é um **stub de simulação**, não um LLM. O stub "enxerga" o rótulo verdadeiro (`TARGET`) e devolve a decisão correta na maioria das vezes, **errando com as taxas por banda da própria config** (`e_fp`/`e_fn`). Serve para demonstrar, de forma determinística, o *efeito* da revisão sobre as métricas — jamais para afirmar desempenho de um LLM real.""",
+    ),
+    (
+        "md",
+        """### 14.1 Aplicando o stub aos casos `LLM_REVIEW`
+
+Tomamos a triagem do modo `vigilancia` (rota A, seção 11), selecionamos os pares roteados a `LLM_REVIEW` e aplicamos `llm_review_stub`. As taxas de erro vêm de `cfg.llm_review.error_rates_by_band` — exatamente as que o motor usa para estimar o custo da revisão (`loss_llm`). A semente fixa garante que a simulação é reprodutível.""",
+    ),
+    (
+        "code",
+        """from gzcmd_record_linkage.metrics import confusion_counts, metrics_dict
+
+from nb_helpers import llm_review_stub
+
+error_rates = cfg.llm_review.error_rates_by_band
+modo_revisao = "vigilancia"
+out_modo = out_vig  # triagem rota A (in-sample), modo vigilancia
+
+mask_review = out_modo["action"] == "LLM_REVIEW"
+df_review = out_modo.loc[mask_review, ["band", "TARGET"]].copy()
+decisoes_revisao = llm_review_stub(
+    df_review, seed=SEED, error_rates_by_band=error_rates
+)
+
+acerto_stub = (
+    decisoes_revisao.to_numpy() == out_modo.loc[mask_review, "TARGET"].map(
+        {1: "MATCH", 0: "NONMATCH"}
+    ).to_numpy()
+).mean()
+
+print(f"Pares roteados a LLM_REVIEW (modo {modo_revisao}): {int(mask_review.sum())}")
+print("Distribuição das decisões simuladas:")
+print(decisoes_revisao.value_counts())
+print(f"Acurácia do revisor simulado (vs TARGET): {acerto_stub:.1%}")""",
+    ),
+    (
+        "md",
+        """### 14.2 Métricas finais incluindo a revisão simulada
+
+Agora combinamos as decisões: pares automáticos mantêm sua ação (`MATCH`/`NONMATCH`); pares `LLM_REVIEW` recebem a decisão do stub. Com isso **todos** os pares ficam resolvidos, e podemos calcular precisão, recall e F1 finais sobre o conjunto inteiro (comparando com `TARGET`). Comparamos com a fotografia automática anterior, em que os `LLM_REVIEW` ainda estavam pendentes.""",
+    ),
+    (
+        "code",
+        """final_action = out_modo["action"].astype("object").copy()
+final_action.loc[mask_review] = decisoes_revisao.to_numpy()
+
+y_true = out_modo["TARGET"].astype(int).to_numpy()
+y_pred_final = (final_action == "MATCH").astype(int).to_numpy()
+
+counts_final = confusion_counts(y_true, y_pred_final)
+metrics_final = metrics_dict(counts_final, beta=1.0)
+
+cobertura_auto = float((out_modo["action"] != "LLM_REVIEW").mean())
+
+tabela_final = pd.DataFrame(
+    {
+        "métrica": ["precisão", "recall", "F1", "cobertura automática (antes)"],
+        "valor": [
+            metrics_final["precision"],
+            metrics_final["recall"],
+            metrics_final["f1"],
+            cobertura_auto,
+        ],
+    }
+)
+tabela_final.round(4)""",
+    ),
+    (
+        "md",
+        """### 14.3 O herói na revisão
+
+Nosso par-fio-condutor (`zona_cinzenta`) é, por construção, um caso ambíguo. Vamos ver se a triagem o enviou para `LLM_REVIEW` e, em caso afirmativo, qual foi a decisão final simulada.""",
+    ),
+    (
+        "code",
+        """hero_action_vig = out_vig.loc[hero_idx, "action"]
+if hero_action_vig == "LLM_REVIEW":
+    hero_final = decisoes_revisao.loc[hero_idx]
+    hero_msg = f"herói roteado a LLM_REVIEW → decisão simulada: {hero_final}"
+else:
+    hero_final = hero_action_vig
+    hero_msg = f"herói decidido automaticamente: {hero_final}"
+
+print(hero_msg)
+card_heroi(out_vig, hero_idx, ["nota_final", "band", "p_cal", "action", "TARGET"])""",
+    ),
+    (
+        "md",
+        """**Recap.** Simulamos a etapa de revisão de forma determinística e transparente: o stub resolve os casos `LLM_REVIEW` com taxas de erro por banda vindas da config, sem qualquer chamada de rede. Medimos seu efeito sobre precisão/recall/F1 finais e acompanhamos o herói. Deixamos explícito que isto é uma **simulação** — um LLM real exigiria o protocolo `dual_agent_plus_arbiter` com dossiês e guardas de vazamento de PII.
+
+**O que vem a seguir.** Com todos os estágios reproduzidos, na Wave 4 polimos a narrativa, garantimos reprodutibilidade ponta-a-ponta e fechamos o QA global.""",
+    ),
+]
+
+
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
@@ -1649,6 +1755,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_6,
     FASE_3_1,
     FASE_3_2,
+    FASE_3_3,
 ]
 
 

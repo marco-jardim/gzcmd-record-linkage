@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from nb_helpers import brier_score, expected_calibration_error
+from nb_helpers import brier_score, expected_calibration_error, llm_review_stub
 
 
 def test_brier_previsoes_perfeitas_eh_zero() -> None:
@@ -90,3 +90,76 @@ def test_validacao_vazio_e_nan() -> None:
 def test_validacao_n_bins_invalido() -> None:
     with pytest.raises(ValueError):
         expected_calibration_error([0, 1], [0.2, 0.8], n_bins=0)
+
+
+# ---------------------------------------------------------------------------
+# TST3.3.a — stub determinístico de revisão LLM
+# ---------------------------------------------------------------------------
+
+_RATES = {
+    "grey_low": {"e_fp": 0.08, "e_fn": 0.12},
+    "grey_mid": {"e_fp": 0.06, "e_fn": 0.10},
+    "grey_high": {"e_fp": 0.04, "e_fn": 0.08},
+    "near_high": {"e_fp": 0.02, "e_fn": 0.06},
+    "low": {"e_fp": 0.10, "e_fn": 0.15},
+    "high": {"e_fp": 0.01, "e_fn": 0.03},
+}
+
+
+def _review_frame(n: int, *, band: str, seed: int = 0) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    target = rng.integers(0, 2, size=n)
+    return pd.DataFrame({"TARGET": target, "band": [band] * n})
+
+
+def test_stub_deterministico_mesma_seed() -> None:
+    df = _review_frame(200, band="grey_mid", seed=1)
+    out_a = llm_review_stub(df, seed=42, error_rates_by_band=_RATES)
+    out_b = llm_review_stub(df, seed=42, error_rates_by_band=_RATES)
+    assert out_a.equals(out_b)
+    assert set(out_a.unique()) <= {"MATCH", "NONMATCH"}
+    assert list(out_a.index) == list(df.index)
+
+
+def test_stub_seeds_diferentes_podem_diferir() -> None:
+    df = _review_frame(200, band="grey_mid", seed=2)
+    out_a = llm_review_stub(df, seed=42, error_rates_by_band=_RATES)
+    out_b = llm_review_stub(df, seed=7, error_rates_by_band=_RATES)
+    assert not out_a.equals(out_b)
+
+
+def test_stub_taxas_de_erro_respeitadas() -> None:
+    # Conjunto grande, banda única, classes balanceadas → taxa empírica ~ config.
+    n = 8000
+    rng = np.random.default_rng(123)
+    target = rng.integers(0, 2, size=n)
+    df = pd.DataFrame({"TARGET": target, "band": ["grey_low"] * n})
+    decisions = llm_review_stub(df, seed=42, error_rates_by_band=_RATES)
+    pos = df["TARGET"] == 1
+    neg = ~pos
+    # FN: positivos marcados NONMATCH; FP: negativos marcados MATCH.
+    emp_fn = (decisions[pos] == "NONMATCH").mean()
+    emp_fp = (decisions[neg] == "MATCH").mean()
+    assert emp_fn == pytest.approx(_RATES["grey_low"]["e_fn"], abs=0.03)
+    assert emp_fp == pytest.approx(_RATES["grey_low"]["e_fp"], abs=0.03)
+
+
+def test_stub_fallback_banda_desconhecida() -> None:
+    df = _review_frame(50, band="banda_inexistente", seed=3)
+    # Sem mapa de taxas → usa fallback; não deve levantar e cobre {MATCH,NONMATCH}.
+    out = llm_review_stub(df, seed=42, error_rates_by_band=None)
+    assert set(out.unique()) <= {"MATCH", "NONMATCH"}
+    assert len(out) == 50
+
+
+def test_stub_vazio_retorna_serie_vazia() -> None:
+    df = pd.DataFrame({"TARGET": [], "band": []})
+    out = llm_review_stub(df, seed=42, error_rates_by_band=_RATES)
+    assert len(out) == 0
+
+
+def test_stub_exige_colunas() -> None:
+    with pytest.raises(KeyError):
+        llm_review_stub(pd.DataFrame({"band": ["low"]}), error_rates_by_band=_RATES)
+    with pytest.raises(KeyError):
+        llm_review_stub(pd.DataFrame({"TARGET": [1]}), error_rates_by_band=_RATES)
