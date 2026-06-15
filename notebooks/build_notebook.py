@@ -639,6 +639,267 @@ vazamento** (rotas A e B).""",
 ]
 
 
+# ===========================================================================
+# FASE 2.4 — Calibração (Platt): rotas A (in-sample) e B (held-out)
+# ===========================================================================
+FASE_2_4: list[tuple[str, str]] = [
+    (
+        "md",
+        """\
+## 9. Calibração: de escore a **probabilidade** confiável
+
+**Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
+
+- **explicar** o que significa uma probabilidade *calibrada* e por que a `nota_final` crua **não** é uma probabilidade;
+- **derivar** o *Platt scaling* (`p = σ(a·s + b)`) e interpretar `a` (inclinação) e `b` (viés) geometricamente;
+- **distinguir** avaliação **in-sample** (rota A, reproduz a ferramenta) de **held-out** (rota B, mede generalização);
+- **medir** a qualidade da calibração com **ECE** e **Brier**, e **validar** o resultado contra a posterior verdadeira `p*`.
+
+**Intuição.** A `nota_final` ordena os pares (quanto maior, mais provável o match),
+mas seu valor numérico não é uma probabilidade: "nota 8" não quer dizer "80% de
+chance de match". **Calibrar** é aprender a função monótona que converte o escore na
+**probabilidade real** de match, `p_cal ∈ [0, 1]`. Com `p_cal` podemos, por exemplo,
+afirmar honestamente "este par tem 92% de chance de ser a mesma pessoa" — e é sobre
+`p_cal` que a política de custo (seção 11) tomará decisões.""",
+    ),
+    (
+        "md",
+        r"""\
+### 9.1 Derivação do *Platt scaling*
+
+Seja $s$ a `nota_final` de um par e $y \in \{0,1\}$ o rótulo verdadeiro (1 = match).
+O Platt modela a probabilidade de match como uma **regressão logística 1-D** sobre o
+escore:
+
+$$ p(s) = \sigma(a\,s + b), \qquad \sigma(z) = \frac{1}{1 + e^{-z}}. $$
+
+- $a$ (**inclinação**, *slope*): controla **quão rápido** a probabilidade sobe com a
+  nota. Quanto maior $a$, mais "abrupta" é a transição de não-match para match.
+- $b$ (**viés**, *intercept*): **desloca** a curva. O ponto onde $p = 0.5$ ocorre em
+  $s^\star = -b/a$ — a "nota de indiferença".
+
+**Ajuste por máxima verossimilhança.** Estimamos $(a, b)$ minimizando a
+**log-verossimilhança negativa** (NLL) com **regularização L2 apenas na inclinação**
+(exatamente como a biblioteca faz):
+
+$$ \mathcal{L}(a,b) = -\sum_{i} \Big[ y_i \log p(s_i) + (1-y_i)\log\big(1-p(s_i)\big) \Big] \;+\; \tfrac{1}{2}\,\lambda\, a^2. $$
+
+A biblioteca resolve isso por **Newton–Raphson** (atualização $w \leftarrow w - H^{-1}g$,
+com $g$ o gradiente e $H$ a Hessiana 2×2), inicializando $b$ no *log-odds* da taxa de
+base e $a=0$. O procedimento é **determinístico** (sem aleatoriedade): mesma entrada,
+mesma saída — fato que exploraremos na reconciliação com `run_v3` (seção 12).
+
+> **Por que L2 só na inclinação?** Penalizar $a$ evita curvas absurdamente íngremes
+> quando há poucos dados; deixar $b$ livre preserva a capacidade de acertar a
+> **prevalência** (taxa de base) da amostra.""",
+    ),
+    (
+        "md",
+        """\
+### 9.2 Rota A — reprodução **fiel** da ferramenta (in-sample)
+
+**O que vamos fazer a seguir.** Ajustar o Platt em **todas** as linhas e pontuar
+**essas mesmas linhas** — exatamente o que `run_v3(p_cal="fit_platt")` faz
+internamente. Isso reproduz a ferramenta com fidelidade (usaremos isso na seção 12),
+mas tem uma armadilha que tornamos explícita logo abaixo.""",
+    ),
+    (
+        "code",
+        """\
+from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
+
+# Rota A: ajuste GLOBAL in-sample (ajusta e pontua nas mesmas linhas).
+platt_insample = fit_platt_from_df(df)
+df["p_cal"] = compute_p_cal(df, method="platt", model=platt_insample)
+
+print("Modelo Platt (in-sample):")
+print(f"  inclinação a (slope)... = {platt_insample.slope:.4f}")
+print(f"  viés b (intercept)..... = {platt_insample.intercept:.4f}")
+print(f"  nota de indiferença s* = -b/a = {-platt_insample.intercept / platt_insample.slope:.3f}")
+print(f"\\nVerdade-base do gerador: a*={meta['true_slope']:.4f}, b*={meta['true_intercept']:.4f}")
+print(f"p_cal (in-sample) — min={df['p_cal'].min():.4f}, max={df['p_cal'].max():.4f}")""",
+    ),
+    (
+        "md",
+        """\
+> ⚠️ **Por que a rota A NÃO mede generalização (vazamento — R-10).** Ajustamos os
+> parâmetros usando os **mesmos** rótulos sobre os quais depois medimos o acerto. Um
+> *reliability diagram* feito aqui seria **otimista por construção**: o modelo "já
+> viu" cada ponto. Para medir calibração de verdade, precisamos de dados **não
+> usados no ajuste** — é a rota B.""",
+    ),
+    (
+        "md",
+        """\
+### 9.3 Rota B — metodologia **correta** (held-out, *group-aware*)
+
+**O que vamos fazer a seguir.** Separar treino/teste de forma **group-aware** por
+`COMPREC` (todas as linhas de um mesmo registro ficam do mesmo lado — evita o
+vazamento por registro compartilhado, típico de *record linkage*). Ajustamos o Platt
+**só no treino** e pontuamos **só no teste**. Toda métrica de calibração honesta vem
+daqui.""",
+    ),
+    (
+        "code",
+        """\
+from nb_helpers import brier_score, expected_calibration_error
+
+train_idx, test_idx = synthetic_data.group_aware_split_indices(
+    df, split_by="comprec", test_size=0.3, seed=SEED, group_stratify=True
+)
+df_train = df.iloc[train_idx]
+df_test = df.iloc[test_idx]
+
+# Ajuste SÓ no treino; previsão SÓ no teste.
+platt_holdout = fit_platt_from_df(df_train)
+p_cal_test = compute_p_cal(df_test, method="platt", model=platt_holdout)
+y_test = df_test["TARGET"].to_numpy(dtype=float)
+
+ece_holdout = expected_calibration_error(y_test, p_cal_test.to_numpy(), n_bins=10)
+brier_holdout = brier_score(y_test, p_cal_test.to_numpy())
+
+print(f"Treino: {len(df_train)} pares | Teste (held-out): {len(df_test)} pares")
+print(f"Platt (treino): a={platt_holdout.slope:.4f}, b={platt_holdout.intercept:.4f}")
+print(f"\\nMétricas de calibração NO TESTE (held-out):")
+print(f"  ECE (Expected Calibration Error) = {ece_holdout:.4f}  (0 = perfeito)")
+print(f"  Brier score....................  = {brier_holdout:.4f}  (menor é melhor)")""",
+    ),
+    (
+        "md",
+        """\
+### 9.4 *Reliability diagram* (no teste held-out)
+
+**Pergunta que a figura responde:** *quando o modelo diz "70%", a fração real de
+matches é mesmo ~70%?* Agrupamos as previsões do **teste** em faixas e comparamos a
+**confiança média** (eixo x) com a **acurácia empírica** (eixo y). Pontos sobre a
+diagonal = perfeitamente calibrado.""",
+    ),
+    (
+        "code",
+        """\
+def reliability_points(y_obs, p_hat, n_bins=10):
+    \"\"\"Retorna (conf_média, acurácia_empírica, peso) por faixa não-vazia.\"\"\"
+    p_hat = np.asarray(p_hat, dtype=float)
+    y_obs = np.asarray(y_obs, dtype=float)
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    idx = np.clip(np.digitize(p_hat, edges[1:-1]), 0, n_bins - 1)
+    conf, acc, wt = [], [], []
+    for b in range(n_bins):
+        m = idx == b
+        if m.sum() > 0:
+            conf.append(p_hat[m].mean())
+            acc.append(y_obs[m].mean())
+            wt.append(int(m.sum()))
+    return np.array(conf), np.array(acc), np.array(wt)
+
+
+conf, acc, wt = reliability_points(y_test, p_cal_test.to_numpy(), n_bins=10)
+
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.plot([0, 1], [0, 1], "--", color="gray", label="calibração perfeita")
+ax.scatter(conf, acc, s=wt * 3, color="#C44E52", alpha=0.8, label="bins (área ∝ nº de pares)")
+ax.set_xlabel("confiança média prevista (p_cal)")
+ax.set_ylabel("fração empírica de matches (acurácia)")
+ax.set_title(f"Reliability diagram — teste held-out\\nECE={ece_holdout:.3f} | Brier={brier_holdout:.3f}")
+ax.set_xlim(-0.02, 1.02)
+ax.set_ylim(-0.02, 1.02)
+ax.legend(loc="upper left")
+fig.tight_layout()
+plt.show()""",
+    ),
+    (
+        "md",
+        """\
+### 9.5 Validação contra a **posterior verdadeira** `p*` (a prova, não a ilustração)
+
+Como os dados são sintéticos, conhecemos `p_true = p*(s)` — a probabilidade real que
+gerou cada rótulo. Podemos então perguntar algo que com dados reais é **impossível**:
+*o Platt recuperou a verdade?* A figura sobrepõe, no **teste**, o `p_cal` estimado
+contra `p*`. Se o método funciona, os pontos seguem a diagonal.
+
+> **Anti-circularidade (DEC-06).** `p*` foi definida **antes** dos rótulos
+> (`TARGET ~ Bernoulli(p*)`) e **nunca** entrou no pipeline. Recuperá-la é evidência
+> genuína de que a calibração funciona — não uma tautologia.""",
+    ),
+    (
+        "code",
+        """\
+# p_true está alinhada por posição às linhas do dataset (mesma ordem do CSV).
+p_true_test = p_true.to_numpy(dtype=float)[test_idx]
+mae_vs_ptrue = float(np.mean(np.abs(p_cal_test.to_numpy() - p_true_test)))
+
+ordem = np.argsort(p_true_test)
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.plot([0, 1], [0, 1], "--", color="gray", label="p_cal = p* (ideal)")
+ax.scatter(p_true_test[ordem], p_cal_test.to_numpy()[ordem], s=14, alpha=0.5, color="#4C72B0", label="pares de teste")
+ax.set_xlabel("posterior verdadeira p*(s)")
+ax.set_ylabel("probabilidade calibrada p_cal (held-out)")
+ax.set_title(f"O Platt recupera p*?  |  erro médio |p_cal − p*| = {mae_vs_ptrue:.4f}")
+ax.legend(loc="upper left")
+fig.tight_layout()
+plt.show()
+
+print(f"Erro absoluto médio entre p_cal (held-out) e a verdade p*: {mae_vs_ptrue:.4f}")
+print("Interpretação: valores pequenos (~0.01–0.03) provam recuperação da verdade-base.")""",
+    ),
+    (
+        "md",
+        """\
+### 9.6 Configuração × código: o que a *config* promete e o que o código faz (R-11)
+
+A `gzcmd_v3_config.yaml` descreve a calibração como `method: anchor_platt` com
+`by_band: true` (um Platt **por banda**, ancorado). **Porém**, o código realmente
+executado por `run_v3` faz um **Platt global** (`fit_platt_from_df`), sem âncoras e
+sem separação por banda. 
+
+Tratamos isso com honestidade: **este notebook ensina o que o código faz** (Platt
+global). A descrição da config é melhor entendida como **intenção de projeto /
+roadmap**, não como comportamento atual. Sinalizar essa divergência é parte do rigor
+científico — apresentar a config como se fosse a implementação seria enganoso.""",
+    ),
+    (
+        "md",
+        """\
+### 9.7 Apêndice (opcional): calibração via modelo ML
+
+A biblioteca também permite `p_cal` a partir de um classificador (`GZCMDClassifier`
+com Random Forest/XGBoost), via `predict_proba(df)[:, 1]`. Para **este material
+didático** mantemos o **Platt** como método principal (DEC-02): ele é 1-D,
+visualizável e **determinístico**, o que o torna ideal para ensinar calibração e para
+**reconciliar** com `run_v3` ao bit (seção 12). O caminho XGBoost é mencionado para
+completude, mas **não é executado aqui** porque (a) introduz não-determinismo entre
+threads/execuções (R-13) e (b) não acrescenta clareza conceitual sobre *calibração*.
+A comparação ML × Platt é deixada como exercício para o leitor com `n_jobs=1` + seed
+fixa.""",
+    ),
+    (
+        "md",
+        """\
+### 9.8 O herói recebe sua probabilidade calibrada
+
+Nosso par **herói** (`zona_cinzenta`) agora tem um `p_cal` (mostramos o da rota A,
+que cobre todas as linhas). Como esperado para um caso ambíguo, sua probabilidade
+**não** é próxima de 0 nem de 1 — fica no meio, sinalizando que a decisão automática
+é arriscada e que guardrails/triagem (próximas seções) serão decisivos.""",
+    ),
+    (
+        "code",
+        """\
+card_heroi(df, hero_idx, ["nota_final", "TARGET", "band", "p_cal"])""",
+    ),
+    (
+        "md",
+        """\
+**Recap da seção.** Derivamos o *Platt scaling* (`p = σ(a·s + b)`), distinguimos
+**rota A** (in-sample, reproduz `run_v3`, mas vaza) de **rota B** (held-out,
+*group-aware*, honesta), medimos a calibração com **ECE** e **Brier** no teste e
+**provamos** — contra a posterior verdadeira `p*` — que o Platt recupera a verdade.
+Também declaramos a divergência **config × código** (R-11). **A seguir:** as regras de
+segurança determinísticas — os **guardrails**.""",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Montagem do notebook
 # ---------------------------------------------------------------------------
@@ -647,6 +908,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
     FASE_2_3,
+    FASE_2_4,
 ]
 
 

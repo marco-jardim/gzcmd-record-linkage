@@ -10,11 +10,14 @@ demonstra, porém de forma rápida e isolada, usando o CSV sintético versionado
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
+import synthetic_data
 from _nb_paths import DATA_SYNTHETIC_DIR
 
 from gzcmd_record_linkage.bands import BandAssigner
+from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
 from gzcmd_record_linkage.config import load_config
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
 
@@ -114,3 +117,106 @@ def test_tst_2_3_a_assign_nao_muta_e_retorna_string(
     pd.testing.assert_series_equal(df_loaded["nota_final"], antes)
     validas = {"low", "grey_low", "grey_mid", "grey_high", "near_high", "high"}
     assert set(bandas.dropna().unique()) <= validas
+
+
+# ---------------------------------------------------------------------------
+# Fase 2.4 — Calibração (Platt): rotas A/B, ausência de vazamento, recuperação p*
+# ---------------------------------------------------------------------------
+CLIP_MIN = 1e-6
+CLIP_MAX = 0.999999
+
+
+@pytest.fixture(scope="module")
+def calib_data(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Dataset determinístico (seed 42) + posterior verdadeira ``p*`` alinhada.
+
+    Regenera via ``synthetic_data`` para obter ``p_true`` (não presente no CSV),
+    grava em CSV temporário e recarrega pelo ``loader`` — espelho fiel do notebook.
+    A ordem das linhas é preservada (CSV sem índice), de modo que ``p_true`` se
+    alinha por posição às linhas carregadas.
+    """
+    ds = synthetic_data.generate_comparador(seed=42, n_pairs=600, scenarios="all")
+    path = tmp_path_factory.mktemp("calib") / "comparador.csv"
+    synthetic_data.to_comparador_csv(ds.frame, path)
+    df = load_comparador_csv(path, cfg=LoadConfig(macd_enabled=True))
+    return df, ds.p_true.to_numpy(dtype=float)
+
+
+def test_tst_2_4_a_p_cal_em_intervalo_e_monotono(
+    calib_data: tuple[pd.DataFrame, np.ndarray],
+) -> None:
+    """Rota A: ``p_cal`` fica no clip [1e-6, 0.999999] e é monótono na nota."""
+    df, _ = calib_data
+    model = fit_platt_from_df(df)
+    p_cal = compute_p_cal(df, method="platt", model=model)
+
+    assert p_cal.min() >= CLIP_MIN - 1e-12
+    assert p_cal.max() <= CLIP_MAX + 1e-12
+    # Platt com slope > 0 é estritamente monótono na nota_final.
+    assert model.slope > 0.0
+    ordem = df["nota_final"].astype(float).argsort()
+    p_ordenado = p_cal.to_numpy()[ordem.to_numpy()]
+    assert np.all(np.diff(p_ordenado) >= -1e-9), (
+        "p_cal deveria ser não-decrescente na nota"
+    )
+
+
+def test_tst_2_4_b_degrada_com_elegancia_classe_unica() -> None:
+    """Degradação elegante: classe única falha explicitamente; poucos positivos OK.
+
+    Com uma única classe, a Hessiana é singular e o ajuste é matematicamente
+    indefinido. A biblioteca não produz lixo silencioso: levanta um ``RuntimeError``
+    claro. Isso é o comportamento *gracioso* desejado (falha alta e nomeada, não NaN).
+    """
+    base = synthetic_data.generate_comparador(seed=7, n_pairs=40).frame
+
+    # Classe única (todos match): ajuste indefinido -> erro explícito.
+    df_uni = base.copy()
+    df_uni["TARGET"] = 1
+    df_uni["PAR"] = 1
+    with pytest.raises(RuntimeError, match="(?i)platt"):
+        fit_platt_from_df(df_uni)
+
+    # Poucos positivos (2 em 40): ainda ajusta, com parâmetros finitos e p_cal válido.
+    df_few = base.copy()
+    df_few["TARGET"] = 0
+    df_few.iloc[:2, df_few.columns.get_loc("TARGET")] = 1
+    model_few = fit_platt_from_df(df_few)
+    assert np.isfinite(model_few.slope) and np.isfinite(model_few.intercept)
+    p_few = compute_p_cal(df_few, method="platt", model=model_few)
+    assert p_few.between(CLIP_MIN - 1e-12, CLIP_MAX + 1e-12).all()
+
+
+def test_tst_2_4_d_split_group_aware_sem_vazamento(
+    calib_data: tuple[pd.DataFrame, np.ndarray],
+) -> None:
+    """Rota B: split por COMPREC/REFREC não compartilha grupos entre treino/teste."""
+    df, _ = calib_data
+    for split_by, col in [("comprec", "COMPREC"), ("refrec", "REFREC")]:
+        train_idx, test_idx = synthetic_data.group_aware_split_indices(
+            df, split_by=split_by, test_size=0.3, seed=42, group_stratify=True
+        )
+        grupos_train = set(df.iloc[train_idx][col].astype(str))
+        grupos_test = set(df.iloc[test_idx][col].astype(str))
+        assert grupos_train.isdisjoint(grupos_test), (
+            f"Vazamento: grupos {col} compartilhados entre treino e teste."
+        )
+        # Cobre todas as linhas, sem sobreposição de índices.
+        assert len(set(train_idx) & set(test_idx)) == 0
+        assert len(train_idx) + len(test_idx) == len(df)
+
+
+def test_tst_2_4_e_recupera_posterior_verdadeira(
+    calib_data: tuple[pd.DataFrame, np.ndarray],
+) -> None:
+    """Held-out: Platt ajustado no treino recupera ``p*`` no teste (erro pequeno)."""
+    df, p_true = calib_data
+    train_idx, test_idx = synthetic_data.group_aware_split_indices(
+        df, split_by="comprec", test_size=0.3, seed=42, group_stratify=True
+    )
+    model = fit_platt_from_df(df.iloc[train_idx])
+    p_cal_test = compute_p_cal(df.iloc[test_idx], method="platt", model=model)
+    mae = float(np.mean(np.abs(p_cal_test.to_numpy() - p_true[test_idx])))
+    assert mae < 0.05, f"Erro médio |p_cal - p*| no teste = {mae:.4f} (esperado < 0.05)"
