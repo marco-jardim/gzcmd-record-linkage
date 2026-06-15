@@ -42,6 +42,7 @@ def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
         "exemplo-fio-condutor",
         "## 7. Carga dos dados e",
         "feature engineering",
+        "## 8. Atribuição de bandas",
     ]
     faltando = [s for s in esperadas if s not in markdown]
     assert not faltando, f"Seções ausentes no notebook: {faltando}"

@@ -499,6 +499,146 @@ em **bandas** discretas com o `BandAssigner`.""",
 ]
 
 
+# ===========================================================================
+# FASE 2.3 — Atribuição de Bandas
+# ===========================================================================
+FASE_2_3: list[tuple[str, str]] = [
+    (
+        "md",
+        """\
+## 8. Atribuição de bandas
+
+**Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
+
+- **explicar** por que discretizar a `nota_final` contínua em **bandas** nomeadas;
+- **calcular** a banda de um par a partir das fronteiras definidas na configuração;
+- **interpretar** o papel das bandas `grey_*` como a **zona de incerteza** do sistema.
+
+**Intuição.** A `nota_final` é um número contínuo, mas a operação precisa de
+**categorias acionáveis**: "isto é claramente alto", "isto está no meio", "isto é
+baixo". As **bandas** fazem esse recorte. Elas servem a três propósitos no
+GZ-CMD++ v3: (1) perfis de **erro do revisor LLM** por banda, (2) **monitoramento de
+drift** por fatia e (3) leitura humana rápida. As bandas `grey_low`, `grey_mid` e
+`grey_high` isolam justamente a **zona cinzenta** — onde a decisão automática é
+arriscada e a calibração/triagem ganham importância.
+
+**O que vamos fazer a seguir.** Carregar a **configuração real** da biblioteca
+(o mesmo `gzcmd_v3_config.yaml` que `run_v3` usa), instanciar o `BandAssigner` a
+partir dela e atribuir uma banda a cada par.""",
+    ),
+    (
+        "code",
+        """\
+from importlib.resources import files
+
+from gzcmd_record_linkage.bands import BandAssigner
+from gzcmd_record_linkage.config import load_config
+
+CONFIG_PATH = str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
+cfg = load_config(CONFIG_PATH)
+
+assigner = BandAssigner.from_config(cfg)
+df["band"] = assigner.assign(df["nota_final"])
+
+print("Contagem de pares por banda:")
+print(df["band"].value_counts().reindex(["low", "grey_low", "grey_mid", "grey_high", "near_high", "high"]))""",
+    ),
+    (
+        "md",
+        """\
+### 8.1 As fronteiras das bandas (lidas da configuração)
+
+A tabela abaixo é construída **diretamente** a partir de `cfg.bands.definitions` —
+ou seja, reflete fielmente o que o código usa. A semântica de cada faixa é
+`min <= nota < max` (limite superior **exclusivo**), **exceto** a banda `high`, cujo
+`inclusive_max=True` a torna `min <= nota <= max`. Notas fora de todas as faixas
+recebem `<NA>` (não deveria ocorrer com `nota_final` em [0, ~10]).""",
+    ),
+    (
+        "code",
+        """\
+fronteiras = pd.DataFrame(
+    [
+        {
+            "banda": d.name,
+            "min": d.min,
+            "max": d.max,
+            "inclui o max?": "sim" if d.inclusive_max else "não",
+        }
+        for d in cfg.bands.definitions
+    ]
+)
+fronteiras""",
+    ),
+    (
+        "md",
+        """\
+### 8.2 Visualização: a `nota_final` colorida por banda
+
+**Pergunta que a figura responde:** *como as fronteiras recortam a distribuição de
+notas?* Cada barra do histograma é colorida pela banda do seu intervalo. Repare como
+as três bandas cinzentas (`grey_low`/`grey_mid`/`grey_high`) cobrem exatamente a
+região central — a zona cinzenta que motivou todo o pipeline.""",
+    ),
+    (
+        "code",
+        """\
+import numpy as np
+
+band_order = ["low", "grey_low", "grey_mid", "grey_high", "near_high", "high"]
+band_colors = {
+    "low": "#4C72B0",
+    "grey_low": "#8172B3",
+    "grey_mid": "#CCB974",
+    "grey_high": "#DD8452",
+    "near_high": "#C44E52",
+    "high": "#55A868",
+}
+
+edges = np.arange(0.0, 11.001, 0.25)
+counts, _ = np.histogram(df["nota_final"].to_numpy(dtype=float), bins=edges)
+centers = (edges[:-1] + edges[1:]) / 2.0
+center_bands = assigner.assign(pd.Series(centers))
+
+fig, ax = plt.subplots(figsize=(9, 4.5))
+for b in band_order:
+    mask = (center_bands == b).to_numpy(dtype=bool)
+    if mask.any():
+        ax.bar(centers[mask], counts[mask], width=0.24, color=band_colors[b], label=b)
+ax.set_xlabel("nota_final (escore agregado de similaridade)")
+ax.set_ylabel("frequência (nº de pares)")
+ax.set_title("nota_final colorida pela banda atribuída")
+ax.legend(title="banda", ncol=3)
+fig.tight_layout()
+plt.show()""",
+    ),
+    (
+        "md",
+        """\
+### 8.3 O herói recebe sua banda
+
+Nosso par **herói** (`zona_cinzenta`) agora carrega uma banda. Como esperado para um
+caso ambíguo, ele cai numa das faixas `grey_*` — o território onde a decisão exige
+calibração honesta e, possivelmente, revisão.""",
+    ),
+    (
+        "code",
+        """\
+card_heroi(df, hero_idx, ["nota_final", "TARGET", "band"])""",
+    ),
+    (
+        "md",
+        """\
+**Recap da seção.** Carregamos a configuração real, atribuímos bandas com o
+`BandAssigner` (limite superior exclusivo, exceto `high`) e visualizamos como as
+fronteiras recortam a distribuição. As bandas `grey_*` materializam a **zona de
+incerteza**. **A seguir:** transformar a `nota_final` em uma **probabilidade
+calibrada** `p_cal` e — criticamente — medir a qualidade dessa calibração **sem
+vazamento** (rotas A e B).""",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Montagem do notebook
 # ---------------------------------------------------------------------------
@@ -506,6 +646,7 @@ em **bandas** discretas com o `BandAssigner`.""",
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
+    FASE_2_3,
 ]
 
 

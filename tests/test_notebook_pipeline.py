@@ -14,6 +14,8 @@ import pandas as pd
 import pytest
 from _nb_paths import DATA_SYNTHETIC_DIR
 
+from gzcmd_record_linkage.bands import BandAssigner
+from gzcmd_record_linkage.config import load_config
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
 
 CSV_PATH = DATA_SYNTHETIC_DIR / "comparador_sintetico.csv"
@@ -72,3 +74,43 @@ def test_tst_2_2_a_ambas_as_classes_presentes(df_loaded: pd.DataFrame) -> None:
     contagem = df_loaded["TARGET"].astype(int).value_counts()
     assert contagem.get(0, 0) > 0, "Sem exemplos não-match (TARGET=0)."
     assert contagem.get(1, 0) > 0, "Sem exemplos match (TARGET=1)."
+
+
+@pytest.fixture(scope="module")
+def band_assigner() -> BandAssigner:
+    from importlib.resources import files
+
+    config_path = str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
+    return BandAssigner.from_config(load_config(config_path))
+
+
+def test_tst_2_3_a_fronteiras_de_banda(band_assigner: BandAssigner) -> None:
+    """As bandas batem com as fronteiras da config, incluindo os edges de fronteira.
+
+    Semântica: ``min <= nota < max`` (max exclusivo), exceto ``high`` cujo
+    ``inclusive_max=True`` o torna ``min <= nota <= max``.
+    """
+    notas = pd.Series([0.0, 4.999, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 999.0])
+    bandas = band_assigner.assign(notas).tolist()
+    assert bandas == [
+        "low",  # 0.0
+        "low",  # 4.999 (< 5)
+        "grey_low",  # 5.0 (fronteira inferior inclusiva)
+        "grey_mid",  # 6.0
+        "grey_high",  # 7.0
+        "near_high",  # 8.0
+        "high",  # 9.0
+        "high",  # 10.0 (high inclui o max)
+        "high",  # 999.0 (max=999 inclusivo)
+    ]
+
+
+def test_tst_2_3_a_assign_nao_muta_e_retorna_string(
+    df_loaded: pd.DataFrame, band_assigner: BandAssigner
+) -> None:
+    """``assign`` não muta a entrada e devolve Series de strings de banda."""
+    antes = df_loaded["nota_final"].copy()
+    bandas = band_assigner.assign(df_loaded["nota_final"])
+    pd.testing.assert_series_equal(df_loaded["nota_final"], antes)
+    validas = {"low", "grey_low", "grey_mid", "grey_high", "near_high", "high"}
+    assert set(bandas.dropna().unique()) <= validas
