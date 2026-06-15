@@ -1,3 +1,22 @@
 .coverage*
 __pycache__/
 *.pyc
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Editor / tooling
+.opencode/
+
+# Jupyter
+.ipynb_checkpoints/
+# Large executed-notebook evidence artifacts (DEC-03); keep the clean .ipynb only.
+*.executed.ipynb
+
+# NOTE: data/synthetic/*.csv is intentionally NOT ignored (DEC-05 — versioned, small, reproducible).

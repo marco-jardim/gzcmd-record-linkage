@@ -65,7 +65,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# DEC-01: notebooks/ on pythonpath so tests can import synthetic_data / nb_helpers
+# (presentation artifacts stay OUT of src/ per D7; not shipped in the wheel).
+pythonpath = ["src", "notebooks"]
 addopts = "-q"
 
 [tool.coverage.run]
