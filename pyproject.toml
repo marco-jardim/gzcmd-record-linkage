@@ -59,9 +59,19 @@ include = [
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+# O .ipynb é um artefato GERADO por notebooks/build_notebook.py (este sim, lintado).
+# A escala de QA de lint do projeto cobre notebooks/*.py e tests/* (não o .ipynb,
+# cujo texto markdown PT-BR e imports up-front são didáticos). A corretude do código
+# do notebook é garantida pela execução headless ponta-a-ponta (TST*.NBEXEC).
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# build_notebook.py carrega o texto markdown (PT-BR) do notebook como strings
+# literais; tabelas e parágrafos não podem ser quebrados sem corromper o render.
+"notebooks/build_notebook.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,6 +79,9 @@ testpaths = ["tests"]
 # (presentation artifacts stay OUT of src/ per D7; not shipped in the wheel).
 pythonpath = ["src", "notebooks"]
 addopts = "-q"
+markers = [
+  "notebook: testes que executam o notebook (headless via nbclient); mais lentos",
+]
 
 [tool.coverage.run]
 branch = true
