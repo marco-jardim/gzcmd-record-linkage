@@ -19,6 +19,7 @@ from _nb_paths import DATA_SYNTHETIC_DIR
 from gzcmd_record_linkage.bands import BandAssigner
 from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
 from gzcmd_record_linkage.config import load_config
+from gzcmd_record_linkage.guardrails import apply_guardrails
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
 
 CSV_PATH = DATA_SYNTHETIC_DIR / "comparador_sintetico.csv"
@@ -220,3 +221,36 @@ def test_tst_2_4_e_recupera_posterior_verdadeira(
     p_cal_test = compute_p_cal(df.iloc[test_idx], method="platt", model=model)
     mae = float(np.mean(np.abs(p_cal_test.to_numpy() - p_true[test_idx])))
     assert mae < 0.05, f"Erro médio |p_cal - p*| no teste = {mae:.4f} (esperado < 0.05)"
+
+
+# ---------------------------------------------------------------------------
+# Fase 2.5 — Guardrails determinísticos antes da política de custo
+# ---------------------------------------------------------------------------
+def test_tst_2_5_a_guardrails_disparam_com_motivos_corretos(
+    df_loaded: pd.DataFrame,
+) -> None:
+    """Todos os tipos de guardrail disparam e carregam seus motivos esperados."""
+    gout = apply_guardrails(df_loaded)
+    fired = pd.DataFrame(
+        {
+            "guardrail": gout.guardrail,
+            "reason": gout.reason,
+        }
+    ).dropna()
+
+    assert {"ALWAYS_MATCH", "ALWAYS_NONMATCH", "FORCE_REVIEW"} <= set(
+        fired["guardrail"]
+    )
+
+    expected_reason_to_guardrail = {
+        "nota_final_high": "ALWAYS_MATCH",
+        "nota_final_low": "ALWAYS_NONMATCH",
+        "temporal_filter": "ALWAYS_NONMATCH",
+        "homonimia_risk": "FORCE_REVIEW",
+    }
+    observed_reason_to_guardrail = dict(
+        fired.groupby("reason", observed=True)["guardrail"].first()
+    )
+
+    for reason, guardrail in expected_reason_to_guardrail.items():
+        assert observed_reason_to_guardrail[reason] == guardrail

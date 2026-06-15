@@ -900,6 +900,124 @@ segurança determinísticas — os **guardrails**.""",
 ]
 
 
+# ===========================================================================
+# FASE 2.5 — Guardrails determinísticos
+# ===========================================================================
+FASE_2_5: list[tuple[str, str]] = [
+    (
+        "md",
+        """\
+## 10. Guardrails
+
+**Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
+
+- **explicar** por que guardrails determinísticos vêm antes da política de custo;
+- **identificar** as regras que forçam `MATCH`, `NONMATCH` ou revisão humana/LLM;
+- **relacionar** cada regra aos cenários sintéticos narrativos do dataset;
+- **avaliar** quando um par segue sem guardrail para a triagem por custo esperado.
+
+**Intuição.** Guardrails são **regras determinísticas de segurança** aplicadas
+**ANTES** da política de custo. Eles não tentam otimizar o custo médio; tentam evitar
+erros catastróficos e casos estruturalmente perigosos: datas impossíveis, notas
+extremamente baixas/altas e homonímia forte. Só depois desse filtro a triagem decide
+por custo esperado entre `MATCH`, `NONMATCH` e `LLM_REVIEW`.""",
+    ),
+    (
+        "md",
+        """\
+**O que vamos fazer a seguir.** Chamaremos a função real
+`apply_guardrails(df)`. Ela devolve duas `Series` alinhadas ao `df`: o guardrail
+acionado (`ALWAYS_MATCH`, `ALWAYS_NONMATCH`, `FORCE_REVIEW` ou `<NA>`) e o motivo
+determinístico (`reason`). A função **não muta** o DataFrame; aqui adicionamos as
+colunas explicitamente para continuar a narrativa do notebook.""",
+    ),
+    (
+        "code",
+        """\
+from gzcmd_record_linkage.guardrails import apply_guardrails
+
+gout = apply_guardrails(df)
+df["guardrail"] = gout.guardrail
+df["guardrail_reason"] = gout.reason
+
+df["guardrail"].value_counts(dropna=False)""",
+    ),
+    (
+        "md",
+        """\
+### 10.1 Quatro regras, três ações possíveis
+
+As regras implementadas hoje são:
+
+1. **`temporal_filter` → `ALWAYS_NONMATCH`**: se o óbito da referência ocorre muito
+   antes do diagnóstico do candidato, a vinculação é temporalmente impossível. No
+   dataset, isso aparece no cenário `obito_antes_diag`.
+2. **`nota_final_low` → `ALWAYS_NONMATCH`**: notas muito baixas são âncoras negativas;
+   o cenário `nonmatch_obvio` foi desenhado para cair aqui.
+3. **`homonimia_risk` → `FORCE_REVIEW`**: nome muito parecido com distância grande de
+   ano de nascimento indica risco de homônimo; o cenário `homonimo` ilustra esse caso.
+4. **`nota_final_high` → `ALWAYS_MATCH`**: notas extremamente altas são âncoras
+   positivas; o cenário `match_obvio` representa esse caso.
+
+> **R-11 (config × código).** A configuração menciona uma regra suave
+> `grey_mother_missing`, mas ela **não está implementada no código atual**. Portanto,
+> o cenário `mae_ausente` não deve ser interpretado como capturado por guardrail;
+> ele segue para a etapa de triagem.""",
+    ),
+    (
+        "code",
+        """\
+cols_guardrail = ["nota_final", "band", "guardrail", "guardrail_reason"]
+exemplos_guardrail = (
+    df.loc[df["guardrail"].notna(), cols_guardrail]
+    .sort_values(["guardrail", "nota_final"], ascending=[True, False])
+    .groupby("guardrail", dropna=True, group_keys=False)
+    .head(3)
+)
+exemplos_guardrail""",
+    ),
+    (
+        "md",
+        """\
+### 10.2 Mapa dos cenários narrativos
+
+Os cenários sintéticos foram criados para deixar cada comportamento auditável:
+
+| Cenário | Guardrail esperado | Motivo esperado |
+|---------|--------------------|-----------------|
+| `match_obvio` | `ALWAYS_MATCH` | `nota_final_high` |
+| `nonmatch_obvio` | `ALWAYS_NONMATCH` | `nota_final_low` |
+| `homonimo` | `FORCE_REVIEW` | `homonimia_risk` |
+| `obito_antes_diag` | `ALWAYS_NONMATCH` | `temporal_filter` |
+| `mae_ausente` | nenhum guardrail | regra suave da config não implementada |
+
+Agora voltamos ao par herói (`zona_cinzenta`) para verificar se ele foi capturado por
+alguma dessas regras determinísticas.""",
+    ),
+    (
+        "code",
+        """\
+card_heroi(
+    df,
+    hero_idx,
+    ["nota_final", "TARGET", "band", "p_cal", "guardrail", "guardrail_reason"],
+)""",
+    ),
+    (
+        "md",
+        """\
+**Recap da seção.** Aplicamos os guardrails reais do pacote e vimos que eles funcionam
+como uma camada de segurança antes da decisão econômica: forçam match quando a nota é
+altíssima, forçam não-match quando a nota é muito baixa ou há impossibilidade temporal,
+e mandam homônimos perigosos para revisão.
+
+O herói `zona_cinzenta` fica com `guardrail = <NA>`: ele **não** foi capturado por
+nenhuma regra determinística e, portanto, segue para a etapa de triagem. **A seguir:**
+a política de custo esperado decidirá a ação final usando `p_cal`, banda e guardrails.""",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Montagem do notebook
 # ---------------------------------------------------------------------------
@@ -909,6 +1027,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_2,
     FASE_2_3,
     FASE_2_4,
+    FASE_2_5,
 ]
 
 
