@@ -1,0 +1,27 @@
+# Tooling de apresentação do notebook didático "GZ-CMD Passo a Passo".
+# Mantido SEPARADO das dependências da biblioteca (pyproject.toml / base.txt)
+# para não poluir o pacote publicado `gzcmd_record_linkage` (ver Diretriz D7 do plano).
+#
+# Instalação (pwsh, a partir da raiz do repositório):
+#   python -m pip install -e .            # instala a biblioteca gzcmd (editable)
+#   python -m pip install -r requirements/notebook.txt
+#
+# A biblioteca já traz numpy/pandas/scikit-learn/scipy/xgboost via base.txt;
+# aqui adicionamos apenas o ferramental de notebook.
+
+# --- Núcleo Jupyter ---
+jupyter>=1.0
+ipykernel>=6.29
+nbformat>=5.10
+nbclient>=0.10
+
+# --- Execução headless / reprodutibilidade (CA-G1) ---
+papermill>=2.6
+nbconvert>=7.16
+
+# --- Visualização ---
+matplotlib>=3.8
+
+# --- Interatividade opcional (DEC-10; protegida por try/except no notebook,
+#     nunca pré-requisito da execução headless) ---
+ipywidgets>=8.1
