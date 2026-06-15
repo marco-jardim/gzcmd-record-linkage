@@ -304,3 +304,95 @@ def test_tst_2_6_b_modos_mudam_decisoes_e_respeitam_orcamento(df_loaded):
     assert (out_vig["action"] != out_conf["action"]).any()
     assert engine_vig.budget.llm_used <= engine_vig.budget.llm_max
     assert engine_conf.budget.llm_used <= engine_conf.budget.llm_max
+
+
+def _tst_3_1_csv(tmp_path):
+    comparador = synthetic_data.generate_comparador(
+        seed=42,
+        n_pairs=600,
+        scenarios="all",
+    )
+    csv_path = tmp_path / "comparador_tst_3_1.csv"
+    synthetic_data.to_comparador_csv(comparador.frame, csv_path)
+    return csv_path
+
+
+def _tst_3_1_config_path():
+    from importlib.resources import files
+
+    return str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
+
+
+def test_tst_3_1_a_reconciliacao_rota_a_exata(tmp_path):
+    import numpy as np
+
+    from gzcmd_record_linkage.runner import build_engine_from_config, run_v3
+
+    input_csv = _tst_3_1_csv(tmp_path)
+    config_path = _tst_3_1_config_path()
+    df = load_comparador_csv(input_csv, cfg=LoadConfig(macd_enabled=True))
+    cfg = load_config(config_path)
+    platt = fit_platt_from_df(df)
+    df["p_cal"] = compute_p_cal(df, method="platt", model=platt)
+    df["band"] = BandAssigner.from_config(cfg).assign(df["nota_final"])
+    gout = apply_guardrails(df)
+    df["guardrail"] = gout.guardrail
+    engine = build_engine_from_config(cfg, mode="vigilancia")
+    out_manual = engine.triage(df.copy())
+
+    out_run, _summary = run_v3(
+        input_csv=input_csv,
+        config_path=config_path,
+        mode="vigilancia",
+        macd_enabled=True,
+        p_cal="fit_platt",
+    )
+
+    assert (out_run["band"].to_numpy() == out_manual["band"].to_numpy()).all()
+    assert np.allclose(
+        out_run["p_cal"].to_numpy(float),
+        out_manual["p_cal"].to_numpy(float),
+        atol=1e-9,
+    )
+    assert (out_run["action"].to_numpy() == out_manual["action"].to_numpy()).all()
+
+
+def test_tst_3_1_b_runsummary_consistente(tmp_path):
+    from gzcmd_record_linkage.runner import run_v3
+
+    out_run, summary = run_v3(
+        input_csv=_tst_3_1_csv(tmp_path),
+        config_path=_tst_3_1_config_path(),
+        mode="vigilancia",
+        macd_enabled=True,
+        p_cal="fit_platt",
+    )
+
+    assert summary.rows == len(out_run)
+    assert sum(summary.actions.values()) == summary.rows
+    assert summary.review_requested >= 0
+    assert set(summary.actions) <= {"MATCH", "NONMATCH", "LLM_REVIEW"}
+
+
+def test_tst_3_1_c_xgboost_qualitativo(tmp_path):
+    import pytest
+
+    from gzcmd_record_linkage.runner import run_v3
+
+    input_csv = _tst_3_1_csv(tmp_path)
+    try:
+        out_xgb, _summary = run_v3(
+            input_csv=input_csv,
+            config_path=_tst_3_1_config_path(),
+            mode="vigilancia",
+            macd_enabled=True,
+            p_cal="fit_ml_xgb",
+        )
+    except ImportError as exc:
+        pytest.skip(f"xgboost indisponível: {exc}")
+
+    # R-13: XGBoost é não-determinístico entre execuções/threads;
+    # reconciliação apenas qualitativa.
+    df = load_comparador_csv(input_csv, cfg=LoadConfig(macd_enabled=True))
+    assert len(out_xgb) == len(df)
+    assert set(out_xgb["action"].unique()) <= {"MATCH", "NONMATCH", "LLM_REVIEW"}

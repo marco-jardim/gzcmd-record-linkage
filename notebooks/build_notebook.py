@@ -1296,6 +1296,92 @@ em held-out: métricas finais, auditoria de decisões e comparação ponta a pon
 ]
 
 
+FASE_3_1 = [
+    (
+        "md",
+        """## 12. Reconciliação com `run_v3` (rota A, in-sample)
+
+**Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **comparar** a rota manual com a função de produção `run_v3`, **verificar** igualdade coluna a coluna, **interpretar** o `RunSummary` e **distinguir** quando uma divergência é erro de implementação versus escolha metodológica.
+
+**Intuição.** O passo a passo manual que construímos nas Fases 7–11 deve reproduzir **exatamente** o que a função de produção `run_v3` faz quando usamos os mesmos parâmetros: ajuste Platt determinístico, configuração igual aos defaults da função e modo `vigilancia`.
+
+Há duas rotas conceituais:
+
+- **Rota A (in-sample):** ajusta a calibração no mesmo conjunto usado na triagem manual. Esta rota deve reconciliar exatamente com `run_v3`.
+- **Rota B (held-out, Fase 2.4):** separa treino/teste para medir generalização. Ela difere **por desenho**, porque o split muda os dados usados no ajuste e, portanto, os números esperados.
+
+**Ação.** Vamos executar `run_v3` com `p_cal='fit_platt'` e comparar com `out_vig`, a triagem manual da rota A construída na Fase 11.
+
+**Recap.** Se os parâmetros e o conjunto de ajuste são os mesmos, a reconciliação deve ser exata; se a rota é held-out, a diferença é esperada e correta.""",
+    ),
+    (
+        "md",
+        """Vamos rodar a função de produção `run_v3` com `p_cal='fit_platt'` e `mode='vigilancia'`. Em seguida, compararemos três saídas críticas com a rota A manual (`out_vig`):
+
+1. `band`: faixa atribuída a partir de `nota_final`;
+2. `p_cal`: probabilidade calibrada pelo Platt global;
+3. `action`: decisão final da política de vigilância.
+
+A comparação é coluna a coluna. Para `p_cal`, usamos a diferença máxima absoluta para capturar qualquer desvio numérico.""",
+    ),
+    (
+        "code",
+        """from gzcmd_record_linkage.runner import run_v3
+
+out_run, summary = run_v3(
+    input_csv=CSV_PATH,
+    config_path=CONFIG_PATH,
+    mode="vigilancia",
+    macd_enabled=True,
+    p_cal="fit_platt",
+)
+
+# Comparação coluna a coluna com a rota A manual (out_vig, da Fase 11)
+import numpy as np
+
+band_identico = bool((out_run["band"].to_numpy() == out_vig["band"].to_numpy()).all())
+pcal_maxdiff = float(
+    np.max(np.abs(out_run["p_cal"].to_numpy(float) - out_vig["p_cal"].to_numpy(float)))
+)
+acao_identica = bool((out_run["action"].to_numpy() == out_vig["action"].to_numpy()).all())
+
+print(f"band idêntico:           {band_identico}")
+print(f"p_cal diferença máxima:  {pcal_maxdiff:.2e}")
+print(f"action idêntico:         {acao_identica}")""",
+    ),
+    (
+        "md",
+        """O objeto `RunSummary` resume a execução de produção. Ele registra quantas linhas foram processadas (`rows`), a distribuição das ações (`actions`), quais guardrails foram ativados (`guardrails`), quantos casos pediram revisão (`review_requested`) e como `p_cal` foi produzido (`p_cal_method` e `p_cal_params`).
+
+Essa visão é útil para auditoria: além de saber que as colunas reconciliaram, conseguimos explicar o volume de decisões e os parâmetros efetivos da calibração.""",
+    ),
+    (
+        "code",
+        """resumo = {
+    "linhas": summary.rows,
+    "ações": summary.actions,
+    "guardrails": summary.guardrails,
+    "review_requested": summary.review_requested,
+    "p_cal_method": summary.p_cal_method,
+    "p_cal_params": summary.p_cal_params,
+}
+resumo""",
+    ),
+    (
+        "md",
+        """A reconciliação é exata porque o Platt global usado aqui é determinístico e porque os parâmetros da configuração são iguais aos defaults usados por `run_v3`. Assim, rota manual e função de produção leem os mesmos dados, aplicam a mesma calibração, atribuem as mesmas bandas, executam os mesmos guardrails e chegam à mesma ação.
+
+Já a rota B, held-out, difere de propósito: ela faz split treino/teste para estimar desempenho fora da amostra. Como o ajuste é feito em outro subconjunto, os valores de `p_cal` e as métricas podem mudar. Isso não é bug; é exatamente o que queremos para medir generalização.
+
+**R-13.** Para modelos como XGBoost ou Random Forest, a reconciliação deve ser tratada como qualitativa. Mesmo com seeds, pode haver não-determinismo entre threads, bibliotecas e execuções; portanto, verificamos propriedades agregadas e domínio das ações, não igualdade bit a bit.""",
+    ),
+    (
+        "md",
+        """**Recap da seção.** Nesta seção, executamos `run_v3` na rota A, com Platt ajustado in-sample, e comparamos a saída de produção com a triagem manual. A expectativa correta é igualdade exata para `band`, diferença numérica zero ou desprezível para `p_cal` e igualdade exata para `action`. Também vimos como ler o `RunSummary` e por que rotas held-out ou modelos ML não determinísticos pedem critérios de reconciliação diferentes.""",
+    ),
+]
+
+
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
@@ -1303,6 +1389,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_4,
     FASE_2_5,
     FASE_2_6,
+    FASE_3_1,
 ]
 
 
