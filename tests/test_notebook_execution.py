@@ -50,9 +50,41 @@ def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
         "## 12. Reconciliação",
         "## 13. Avaliação held-out",
         "## 14. Revisão LLM",
+        "## 15. Conclusões e limitações",
     ]
     faltando = [s for s in esperadas if s not in markdown]
     assert not faltando, f"Seções ausentes no notebook: {faltando}"
+
+
+def test_tst_4_1_a_figuras_tem_titulo_e_legenda() -> None:
+    """TST4.1.a — Heurística: toda célula de código que cria figura (``plt``) deve
+    definir título (``set_title``/``plt.title``/``suptitle``) e rótulos de eixo
+    (``set_xlabel``/``set_ylabel`` ou ``plt.xlabel``/``plt.ylabel``), para que cada
+    figura responda a uma pergunta com eixos legíveis em PT-BR (DEC-09 / eixo 6 do QA).
+    """
+    nb = _read_notebook()
+    sem_titulo: list[int] = []
+    sem_eixos: list[int] = []
+    for i, c in enumerate(nb.cells):
+        if c.cell_type != "code":
+            continue
+        src = c.source
+        # Considera célula de plotagem aquela que adiciona eixos/figura.
+        cria_figura = "subplots(" in src or "plt.figure(" in src or ".plot(" in src
+        if not cria_figura:
+            continue
+        tem_titulo = "set_title(" in src or "plt.title(" in src or "suptitle(" in src
+        tem_eixos = ("set_xlabel(" in src and "set_ylabel(" in src) or (
+            "plt.xlabel(" in src and "plt.ylabel(" in src
+        )
+        if not tem_titulo:
+            sem_titulo.append(i)
+        if not tem_eixos:
+            sem_eixos.append(i)
+    assert not sem_titulo, f"Figuras sem título nos índices de célula: {sem_titulo}"
+    assert not sem_eixos, (
+        f"Figuras sem rótulos de eixo nos índices de célula: {sem_eixos}"
+    )
 
 
 def test_tst_2_1_a_toda_celula_de_codigo_tem_fonte() -> None:

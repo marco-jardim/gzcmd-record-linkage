@@ -416,7 +416,7 @@ lista as colunas MACD presentes.""",
 flags = ["mae_missing", "dtnasc_all_zero", "endereco_zero", "diff_ano"]
 macd_cols = sorted(c for c in df.columns if c.startswith("macd_"))
 print("Flags (amostra de contagens):")
-print(df[flags].apply(lambda s: s.astype(float)).agg(["mean", "max"]).round(3).T)
+print(df[flags].astype(float).agg(["mean", "max"]).round(3).T)
 print(f"\\nColunas MACD presentes ({len(macd_cols)}):")
 for c in macd_cols:
     print(f"  - {c}")""",
@@ -541,7 +541,8 @@ assigner = BandAssigner.from_config(cfg)
 df["band"] = assigner.assign(df["nota_final"])
 
 print("Contagem de pares por banda:")
-print(df["band"].value_counts().reindex(["low", "grey_low", "grey_mid", "grey_high", "near_high", "high"]))""",
+ordem_bandas = ["low", "grey_low", "grey_mid", "grey_high", "near_high", "high"]
+print(df["band"].value_counts().reindex(ordem_bandas, fill_value=0).astype(int))""",
     ),
     (
         "md",
@@ -1057,25 +1058,26 @@ uma revisão adicional pode ter valor econômico.
 ### T2.6.2 — Custo esperado e valor esperado da revisão
 
 Para cada par, usamos $p$ como a probabilidade calibrada de match (`p_cal`). A política compara
-três perdas esperadas:
+três perdas esperadas (usamos $\ell$ para "loss"/perda):
 
-- $loss\_match = (1-p)\,c\_{fp}$: custo esperado de aceitar como `MATCH`. Só pagamos esse custo
-  quando o par era, na verdade, não-match; por isso aparece $(1-p)$.
-- $loss\_non = p\,c\_{fn}$: custo esperado de rejeitar como `NONMATCH`. Só pagamos esse custo
-  quando o par era, na verdade, match; por isso aparece $p$.
-- $loss\_llm = c\_{llm} + (1-p)\,e\_{fp}\,c\_{fp} + p\,e\_{fn}\,c\_{fn}$: custo esperado de pedir
-  revisão. Ele soma o custo direto da revisão ($c\_{llm}$) com o erro residual esperado da LLM:
-  $e\_{fp}$ é a taxa residual de falso positivo após revisão e $e\_{fn}$ é a taxa residual de
+- $\ell_{\text{match}} = (1-p)\,c_{fp}$: custo esperado de aceitar como `MATCH`. Só pagamos esse
+  custo quando o par era, na verdade, não-match; por isso aparece $(1-p)$.
+- $\ell_{\text{non}} = p\,c_{fn}$: custo esperado de rejeitar como `NONMATCH`. Só pagamos esse
+  custo quando o par era, na verdade, match; por isso aparece $p$.
+- $\ell_{\text{llm}} = c_{llm} + (1-p)\,e_{fp}\,c_{fp} + p\,e_{fn}\,c_{fn}$: custo esperado de
+  pedir revisão. Ele soma o custo direto da revisão ($c_{llm}$) com o erro residual esperado da
+  LLM: $e_{fp}$ é a taxa residual de falso positivo após revisão e $e_{fn}$ é a taxa residual de
   falso negativo após revisão.
 
 A melhor decisão automática sem revisão é:
 
-- $base\_loss = \min(loss\_match, loss\_non)$;
-- $base\_choice = \operatorname{argmin}\{loss\_match, loss\_non\}$, ou seja, `MATCH` ou `NONMATCH`.
+- $\ell_{\min} = \min(\ell_{\text{match}}, \ell_{\text{non}})$ (a *base loss*);
+- a *base choice* é $\operatorname{argmin}(\ell_{\text{match}}, \ell_{\text{non}})$, ou seja,
+  `MATCH` ou `NONMATCH`.
 
-O valor esperado da revisão é:
+O valor esperado da revisão (*expected value of review*) é:
 
-- $evr = base\_loss - loss\_llm$.
+- $\text{evr} = \ell_{\min} - \ell_{\text{llm}}$.
 
 Se $evr > 0$ e ainda houver orçamento de revisão, revisar reduz o custo esperado; a ação final
 pode ser `LLM_REVIEW`. Caso contrário, a ação fica com `base_choice`. Portanto,
@@ -1083,9 +1085,9 @@ pode ser `LLM_REVIEW`. Caso contrário, a ação fica com `base_choice`. Portant
 
 Os dois modos mudam os custos e os limites de automação:
 
-- **`vigilancia`**: $c\_{fp}=10$, $c\_{fn}=50$, `min_auto_match=0.85`,
+- **`vigilancia`**: $c_{fp}=10$, $c_{fn}=50$, `min_auto_match=0.85`,
   `max_auto_nonmatch=0.15`, orçamento 2000. Prioriza **recall**: perder um match custa caro.
-- **`confirmacao`**: $c\_{fp}=100$, $c\_{fn}=20$, `min_auto_match=0.95`,
+- **`confirmacao`**: $c_{fp}=100$, $c_{fn}=20$, `min_auto_match=0.95`,
   `max_auto_nonmatch=0.10`, orçamento 1000. Prioriza **precisão**: confirmar um falso match custa caro.
 """,
     ),
@@ -1462,6 +1464,7 @@ for i, metric in enumerate(metric_labels_32):
 
 ax.set_xticks(x)
 ax.set_xticklabels(modes_32)
+ax.set_xlabel("Modo de operação")
 ax.set_ylim(0, 1.05)
 ax.set_ylabel("Métrica no teste held-out")
 ax.set_title("Média ± desvio-padrão por modo (5 sementes, split por COMPREC)")
@@ -1741,7 +1744,77 @@ card_heroi(out_vig, hero_idx, ["nota_final", "band", "p_cal", "action", "TARGET"
         "md",
         """**Recap.** Simulamos a etapa de revisão de forma determinística e transparente: o stub resolve os casos `LLM_REVIEW` com taxas de erro por banda vindas da config, sem qualquer chamada de rede. Medimos seu efeito sobre precisão/recall/F1 finais e acompanhamos o herói. Deixamos explícito que isto é uma **simulação** — um LLM real exigiria o protocolo `dual_agent_plus_arbiter` com dossiês e guardas de vazamento de PII.
 
-**O que vem a seguir.** Com todos os estágios reproduzidos, na Wave 4 polimos a narrativa, garantimos reprodutibilidade ponta-a-ponta e fechamos o QA global.""",
+**O que vem a seguir.** Com todos os estágios reproduzidos, fechamos o notebook com uma síntese do que foi demonstrado e — com igual destaque — das **limitações** que delimitam honestamente o que estes resultados significam.""",
+    ),
+]
+
+
+FASE_4_1: list[tuple[str, str]] = [
+    (
+        "md",
+        """## 15. Conclusões e limitações
+
+**Objetivo de aprendizagem.** Ao final desta seção, você será capaz de **resumir** o que cada
+estágio do GZ-CMD++ v3 faz, **articular** por que a metodologia adotada é honesta e **enumerar**
+as limitações que impedem leituras exageradas dos resultados.
+
+### 15.1 O que demonstramos
+
+Percorremos o pipeline inteiro sobre um dataset **100% sintético**, estágio a estágio:
+
+1. **Carga e feature engineering** — dos subscores crus do comparador às features agregadas,
+   flags e MACD que o pacote realmente consome.
+2. **Bandas** — o binning de `nota_final` que organiza a zona cinzenta (`grey_*`) onde mora a
+   incerteza.
+3. **Calibração (Platt)** — derivamos a matemática e mostramos **duas rotas**: a rota A
+   *in-sample* (que reproduz a ferramenta) e a rota B *held-out* (a única que mede
+   generalização). Validamos a calibração contra a posterior verdadeira `p_true`, com **ECE** e
+   **Brier** numéricos — não apenas o gráfico.
+4. **Guardrails** — as regras determinísticas de segurança e os casos sintéticos que cada uma
+   dispara.
+5. **Triagem por custo esperado** — a decisão `MATCH`/`NONMATCH`/`LLM_REVIEW` nos modos
+   `vigilancia` (recall) e `confirmacao` (precisão).
+6. **Reconciliação com `run_v3`** — a rota A manual reproduz `run_v3` **bit a bit** para o Platt
+   determinístico (banda idêntica, `p_cal` com `atol≤1e-9`, ação idêntica).
+7. **Avaliação held-out multi-seed** — precisão/recall/F-beta e cobertura automática com
+   variância entre seeds, curvas PR/ROC e a superfície de custo vs. limiar ligando a política ao
+   ponto de operação ótimo.
+8. **Revisão LLM (stub)** — uma simulação determinística e transparente do estágio clerical.
+
+### 15.2 Limitações (leia antes de generalizar)
+
+Estes resultados são uma **demonstração didática**, não evidência empírica sobre dados reais.
+As limitações abaixo são parte essencial da leitura honesta:
+
+- **Dados sintéticos.** Todo o dataset foi gerado por código (`synthetic_data.py`) a partir de uma
+  posterior verdadeira conhecida `p_true`. Isso é ótimo para *provar* que a calibração recupera a
+  verdade, mas as distribuições, a prevalência (`match_ratio`) e a estrutura de subscores foram
+  escolhidas para a didática — **não** refletem uma base populacional real.
+- **In-sample × held-out (R-10).** O `run_v3` calibra *in-sample* (ajusta e pontua as mesmas
+  linhas). Um *reliability diagram* sobre esses mesmos dados é otimista por construção. **Só** a
+  rota B (held-out, via `evaluate_v3_dataframe`) mede generalização — e foi nela que reportamos as
+  métricas.
+- **Config × código (R-11).** A config promete calibração `anchor_platt` **por banda** e uma regra
+  `grey_mother_missing`; o código implementado faz **Platt global** e **não** aplica aquela regra.
+  Ensinamos **o que o código faz**, tratando a config como intenção/roadmap.
+- **Vazamento por grupo.** Demonstramos o split *group-aware*, mas neste sintético o efeito de
+  vazamento é **negligenciável por construção** (os grupos `COMPREC`/`REFREC` são quase todos
+  singletons). Em produção, com *blocking* e múltiplos pares por registro, o split por linha
+  inflaria as métricas — por isso o split por grupo é a prática correta.
+- **LLM simulado (R-05).** A etapa de revisão é um **stub determinístico** que usa o rótulo
+  verdadeiro `TARGET` mais taxas de erro por banda. **Não** é um LLM real, não há chamada de rede,
+  e a "acurácia" do stub é um artefato das taxas injetadas — não uma medida de um modelo real.
+- **XGBoost não-determinístico (R-13).** O apêndice de ML é apenas **qualitativo**: a reconciliação
+  exata vale para o Platt determinístico, não para o XGBoost.
+- **Âncora de guardrail.** O `ALWAYS_MATCH` real exige `nota_final ≥ 10` **e** nome/data/município
+  perfeitos — mais estrito do que a leitura ingênua de "`nota ≥ 9`".
+
+### 15.3 Recap final
+
+O valor deste notebook não é "o modelo acertou X%", e sim **mostrar como cada decisão é tomada,
+por quê, e sob quais hipóteses**. A separação rota A × rota B, a validação contra `p_true` e a
+transparência sobre simulação e divergências config×código são o que transformam uma demo bonita
+em **material acadêmico defensável**.""",
     ),
 ]
 
@@ -1756,6 +1829,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_3_1,
     FASE_3_2,
     FASE_3_3,
+    FASE_4_1,
 ]
 
 
