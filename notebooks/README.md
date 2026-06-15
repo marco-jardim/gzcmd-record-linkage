@@ -4,17 +4,24 @@ Material de apresentação (PT-BR, público técnico/acadêmico) que reproduz, p
 passo, o pipeline do motor de decisão **GZ-CMD++ v3** (`gzcmd_record_linkage`)
 sobre um **dataset 100% sintético** gerado para a apresentação.
 
-> Status: **em construção** (ver `docs/plans/notebook-gzcmd-passo-a-passo.md`).
+O notebook percorre os oito estágios do pipeline — carga + feature engineering,
+atribuição de bandas, calibração de Platt (in-sample × held-out), guardrails,
+política de decisão por custo esperado nos dois modos (`vigilancia`/`confirmacao`),
+reconciliação exata com `run_v3`, avaliação held-out multi-seed (PR/ROC + custo
+vs. limiar) e revisão LLM simulada — cada um com explicação, matemática e
+visualização.
 
 ## Conteúdo desta pasta
 
 | Arquivo | Papel |
 |---------|-------|
-| `gzcmd_passo_a_passo.ipynb` | Notebook da apresentação (em construção). |
-| `synthetic_data.py` | Gerador de dataset sintético (importável/testável). |
-| `nb_helpers.py` | Helpers de plot, métricas de calibração (ECE/Brier) e stub determinístico de LLM. |
+| `gzcmd_passo_a_passo.ipynb` | Notebook da apresentação. **Arquivo gerado** — não editar à mão. |
+| `build_notebook.py` | **Fonte da verdade** do notebook: monta o `.ipynb` célula a célula via `nbformat`. Edite aqui e regenere. |
+| `synthetic_data.py` | Gerador de dataset sintético (importável/testável), com posterior verdadeira `p_true` (DEC-06). |
+| `nb_helpers.py` | Métricas de calibração (`expected_calibration_error`, `brier_score`) e stub determinístico de revisão LLM (`llm_review_stub`). |
 
-O dataset gerado é salvo em `../data/synthetic/comparador_sintetico.csv`.
+O dataset gerado é salvo (e versionado) em
+`../data/synthetic/comparador_sintetico.csv`.
 
 ## Pré-requisitos
 
@@ -45,29 +52,64 @@ basta adicionar o ferramental de notebook:
 python -m pip install -r requirements/notebook.txt
 ```
 
-## Como regenerar os dados sintéticos
+## Como abrir e executar o notebook
 
-O notebook regenera os dados na primeira célula de setup. Para gerar fora do
-notebook:
+Para exploração interativa:
 
 ```pwsh
-python -c "from synthetic_data import generate_comparador; generate_comparador(seed=42)"
+jupyter lab notebooks/gzcmd_passo_a_passo.ipynb
 ```
 
-(Requer `notebooks/` no `PYTHONPATH`; ao rodar via pytest isso já está
-configurado em `pyproject.toml`.)
-
-## Como executar o notebook de ponta a ponta (headless)
+Para execução de ponta a ponta sem interface (headless), útil como teste de
+reprodutibilidade e para gerar o artefato de evidência:
 
 ```pwsh
-papermill notebooks/gzcmd_passo_a_passo.ipynb docs/plans/qa/gzcmd_passo_a_passo.executed.ipynb
-# ou
-jupyter nbconvert --to notebook --execute notebooks/gzcmd_passo_a_passo.ipynb
+# Artefato executado (não versionado — ver DEC-03 / .gitignore)
+jupyter nbconvert --to notebook --execute `
+  notebooks/gzcmd_passo_a_passo.ipynb `
+  --output ../docs/plans/qa/gzcmd_passo_a_passo.executed.ipynb
+
+# ou via papermill
+papermill notebooks/gzcmd_passo_a_passo.ipynb `
+  docs/plans/qa/gzcmd_passo_a_passo.executed.ipynb
+```
+
+O notebook é **autossuficiente** quanto ao `sys.path` (a primeira célula localiza
+a raiz do repositório), portanto não exige `PYTHONPATH` ao rodar em um kernel
+headless.
+
+## Como regenerar o notebook (após editar `build_notebook.py`)
+
+O `.ipynb` é **gerado**; a fonte da verdade é `build_notebook.py`. Após qualquer
+alteração de conteúdo:
+
+```pwsh
+python notebooks/build_notebook.py
+```
+
+Isso reescreve `notebooks/gzcmd_passo_a_passo.ipynb` a partir das fases em
+`ALL_PHASES`.
+
+## Como regenerar os dados sintéticos
+
+O notebook regenera os dados na célula de setup. Para gerar fora do notebook
+(requer `notebooks/` no `PYTHONPATH` — já configurado no pytest via
+`pyproject.toml`):
+
+```pwsh
+$env:PYTHONPATH = "src;notebooks"
+python -c "import synthetic_data as s; ds = s.generate_comparador(seed=42, n_pairs=600, scenarios='all'); s.to_comparador_csv(ds.frame, 'data/synthetic/comparador_sintetico.csv')"
 ```
 
 ## Testes relacionados
 
 ```pwsh
+# Suíte completa
 pytest -q
+
+# Apenas os testes de execução do notebook (mais lentos)
+pytest -q -m notebook
+
+# Cobertura dos módulos de apoio do notebook
 pytest -q --cov=synthetic_data --cov=nb_helpers --cov-report=term-missing
 ```
