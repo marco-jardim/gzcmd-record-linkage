@@ -19,6 +19,7 @@ from _nb_paths import DATA_SYNTHETIC_DIR
 from gzcmd_record_linkage.bands import BandAssigner
 from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
 from gzcmd_record_linkage.config import load_config
+from gzcmd_record_linkage.eval import evaluate_v3_dataframe
 from gzcmd_record_linkage.guardrails import apply_guardrails
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
 
@@ -396,3 +397,102 @@ def test_tst_3_1_c_xgboost_qualitativo(tmp_path):
     df = load_comparador_csv(input_csv, cfg=LoadConfig(macd_enabled=True))
     assert len(out_xgb) == len(df)
     assert set(out_xgb["action"].unique()) <= {"MATCH", "NONMATCH", "LLM_REVIEW"}
+
+
+def _fase_3_2_cfg():
+    from importlib.resources import files
+
+    return load_config(str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml"))
+
+
+def test_tst_3_2_a_metricas_consistentes(df_loaded):
+    res = evaluate_v3_dataframe(
+        df_loaded,
+        cfg=_fase_3_2_cfg(),
+        modes=["vigilancia", "confirmacao"],
+        split_by="comprec",
+        seeds=[42, 123],
+        test_size=0.3,
+        group_stratify=True,
+        calibration="platt",
+        macd_enabled=True,
+    )
+
+    assert res["auto_precision"].between(0, 1).all()
+    assert res["auto_recall"].between(0, 1).all()
+    total = res[["auto_tp", "auto_fp", "auto_fn", "auto_tn"]].sum(axis=1)
+    # A matriz auto_* cobre apenas decisões automáticas; LLM_REVIEW fica fora dela.
+    assert np.isclose(total + res["llm_used"], res["n_test"]).all()
+
+
+def test_tst_3_2_b_vigilancia_recall_media(df_loaded):
+    res = evaluate_v3_dataframe(
+        df_loaded,
+        cfg=_fase_3_2_cfg(),
+        modes=["vigilancia", "confirmacao"],
+        split_by="comprec",
+        seeds=[42, 123, 456, 789, 2024],
+        test_size=0.3,
+        group_stratify=True,
+        calibration="platt",
+        macd_enabled=True,
+    )
+
+    mean_recall = res.groupby("mode")["auto_recall"].mean()
+    assert mean_recall["vigilancia"] >= mean_recall["confirmacao"] - 0.05
+
+
+def test_tst_3_2_c_row_split_nao_deflaciona(df_loaded):
+    """TST3.2.c — split ``row`` não deve produzir métricas *menores* que o split
+    group-aware (em record linkage o vazamento do ``row`` tende a inflar, nunca a
+    deflacionar). Neste dataset sintético os grupos COMPREC/REFREC são quase todos
+    de tamanho 1, então o efeito é desprezível e os splits ficam ~iguais; usamos
+    tolerância para refletir essa honestidade empírica em vez de afirmar inflação
+    forte que os dados não sustentam (ver markdown 13.3 do notebook)."""
+    rows = []
+    for split_by in ["row", "comprec"]:
+        res = evaluate_v3_dataframe(
+            df_loaded,
+            cfg=_fase_3_2_cfg(),
+            modes=["vigilancia"],
+            split_by=split_by,
+            seeds=[42, 123, 456, 789, 2024],
+            test_size=0.3,
+            group_stratify=True,
+            calibration="platt",
+            macd_enabled=True,
+        )
+        rows.append((split_by, res["auto_fbeta"].mean()))
+
+    mean_fbeta = dict(rows)
+    assert mean_fbeta["row"] >= mean_fbeta["comprec"] - 0.02
+
+
+def test_tst_3_2_d_colunas_esperadas(df_loaded):
+    res = evaluate_v3_dataframe(
+        df_loaded,
+        cfg=_fase_3_2_cfg(),
+        modes=["vigilancia", "confirmacao"],
+        split_by="comprec",
+        seeds=[42],
+        test_size=0.3,
+        group_stratify=True,
+        calibration="platt",
+        macd_enabled=True,
+    )
+
+    expected = {
+        "mode",
+        "seed",
+        "split_by",
+        "beta",
+        "n_train",
+        "n_test",
+        "auto_precision",
+        "auto_recall",
+        "auto_fbeta",
+        "auto_coverage",
+        "platt_intercept",
+        "platt_slope",
+    }
+    assert expected.issubset(res.columns)

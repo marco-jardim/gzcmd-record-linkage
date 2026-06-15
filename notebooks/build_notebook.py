@@ -1382,6 +1382,264 @@ Já a rota B, held-out, difere de propósito: ela faz split treino/teste para es
 ]
 
 
+FASE_3_2 = [
+    (
+        "md",
+        """## 13. Avaliação held-out (rota B)
+
+**Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **avaliar** métricas em teste held-out, **comparar** modos de triagem sob múltiplas sementes, **diagnosticar** vazamento por split ingênuo, **interpretar** curvas PR/ROC e **relacionar** limiares de política a custo esperado.
+
+**Intuição.** Na seção 9 discutimos o risco R-10: medir desempenho no mesmo conjunto usado para ajustar a calibração produz uma leitura otimista. A rota B separa treino e teste por grupo (`COMPREC`) para que o Platt seja ajustado no treino e avaliado em pares não vistos no teste.
+
+Também vamos acompanhar **cobertura automática**: a fração de pares que saem como decisão automática (`MATCH` ou `NONMATCH`) em vez de `LLM_REVIEW`. Cobertura alta reduz custo operacional, mas pode pressionar precisão ou recall dependendo do modo.
+
+**Ação.** Vamos medir desempenho held-out em cinco sementes, resumir média±desvio, comparar splits com e sem vazamento, desenhar curvas de operação e traduzir FP/FN em custo.
+
+**Recap.** A pergunta desta seção não é “o modelo acertou o treino?”, e sim “quão estável é a política quando avaliamos fora da amostra e sob diferentes cortes dos dados?”""",
+    ),
+    (
+        "md",
+        """### 13.1 Métricas held-out em múltiplas sementes
+
+Uma única semente pode ser enganosa: ela mostra apenas uma realização do split treino/teste. Se a prevalência, a dificuldade dos pares ou os grupos `COMPREC` mudam entre sementes, precisão, recall, Fβ e cobertura também podem variar.
+
+O próximo código chama `evaluate_v3_dataframe` na rota B. A função ajusta o Platt no treino, prediz no teste e calcula internamente bandas, guardrails, `p_cal`, métricas automáticas e metadados. Usamos os dois modos de política e agrupamos por modo para exibir média e desvio-padrão das métricas principais.""",
+    ),
+    (
+        "code",
+        """from gzcmd_record_linkage.eval import evaluate_v3_dataframe
+
+SEEDS_32 = [42, 123, 456, 789, 2024]
+metric_cols_32 = ["auto_precision", "auto_recall", "auto_fbeta", "auto_coverage"]
+
+res = evaluate_v3_dataframe(
+    df,
+    cfg=cfg,
+    modes=["vigilancia", "confirmacao"],
+    split_by="comprec",
+    seeds=SEEDS_32,
+    test_size=0.3,
+    group_stratify=True,
+    calibration="platt",
+    macd_enabled=True,
+)
+
+resumo_multi_seed = res.groupby("mode")[metric_cols_32].agg(["mean", "std"])
+resumo_multi_seed""",
+    ),
+    (
+        "md",
+        """### 13.2 Barras com incerteza entre sementes
+
+A tabela mostra os números exatos, mas um gráfico ajuda a enxergar a estabilidade relativa. As barras abaixo mostram a média por modo; as hastes de erro mostram o desvio-padrão entre as cinco sementes.
+
+Se uma haste é grande, a conclusão depende mais do split. Se as hastes são pequenas, o comportamento do modo é mais estável para este conjunto sintético.""",
+    ),
+    (
+        "code",
+        """fig, ax = plt.subplots(figsize=(9, 5))
+
+modes_32 = resumo_multi_seed.index.to_list()
+x = np.arange(len(modes_32))
+width = 0.22
+metric_labels_32 = {
+    "auto_precision": "Precisão automática",
+    "auto_recall": "Recall automático",
+    "auto_fbeta": "Fβ automático",
+}
+
+for i, metric in enumerate(metric_labels_32):
+    means = resumo_multi_seed[(metric, "mean")].to_numpy(float)
+    stds = resumo_multi_seed[(metric, "std")].fillna(0).to_numpy(float)
+    ax.bar(
+        x + (i - 1) * width,
+        means,
+        width,
+        yerr=stds,
+        capsize=4,
+        label=metric_labels_32[metric],
+    )
+
+ax.set_xticks(x)
+ax.set_xticklabels(modes_32)
+ax.set_ylim(0, 1.05)
+ax.set_ylabel("Métrica no teste held-out")
+ax.set_title("Média ± desvio-padrão por modo (5 sementes, split por COMPREC)")
+ax.legend(loc="lower right")
+ax.grid(axis="y", alpha=0.25)
+plt.show()""",
+    ),
+    (
+        "md",
+        """### 13.3 Demonstração de vazamento: `row` versus splits por grupo
+
+Agora isolamos o modo `vigilancia` para manter o tempo de execução baixo e mudamos apenas a estratégia de split. O split `row` sorteia linhas independentemente; quando o **mesmo registro** (`COMPREC` ou `REFREC`) aparece em vários pares, ele pode cair em treino **e** em teste, gerando *vazamento por registro compartilhado* e métricas otimistas. Splits por `COMPREC`/`REFREC` mantêm grupos inteiros de um único lado do corte e evitam isso.
+
+**Expectativa honesta para ESTE dataset.** A magnitude do vazamento depende de quão repetidos são os registros. No nosso gerador sintético a maioria dos `COMPREC`/`REFREC` é **única** (grupos de tamanho 1), então os três splits tendem a produzir métricas **quase idênticas** — o efeito aqui é pequeno por construção. A célula a seguir primeiro mede a multiplicidade dos grupos e depois compara a média do Fβ automático, recall e cobertura por tipo de split, para que o leitor julgue o efeito pelos números, não pela retórica.""",
+    ),
+    (
+        "code",
+        """# Multiplicidade dos grupos: fração de linhas cujo COMPREC/REFREC se repete.
+_comprec = df["COMPREC"] if "COMPREC" in df.columns else df.filter(like="COMPREC").iloc[:, 0]
+_refrec = df["REFREC"] if "REFREC" in df.columns else df.filter(like="REFREC").iloc[:, 0]
+frac_comprec_repetido = (_comprec.map(_comprec.value_counts()) > 1).mean()
+frac_refrec_repetido = (_refrec.map(_refrec.value_counts()) > 1).mean()
+print(f"Fração de linhas com COMPREC repetido: {frac_comprec_repetido:.1%}")
+print(f"Fração de linhas com REFREC repetido:  {frac_refrec_repetido:.1%}")
+
+leakage_rows = []
+
+for split_by in ["row", "comprec", "refrec"]:
+    res_split = evaluate_v3_dataframe(
+        df,
+        cfg=cfg,
+        modes=["vigilancia"],
+        split_by=split_by,
+        seeds=SEEDS_32,
+        test_size=0.3,
+        group_stratify=True,
+        calibration="platt",
+        macd_enabled=True,
+    )
+    leakage_rows.append(
+        {
+            "split_by": split_by,
+            "auto_fbeta_mean": res_split["auto_fbeta"].mean(),
+            "auto_recall_mean": res_split["auto_recall"].mean(),
+            "auto_coverage_mean": res_split["auto_coverage"].mean(),
+        }
+    )
+
+leakage_summary = pd.DataFrame(leakage_rows).set_index("split_by")
+leakage_summary""",
+    ),
+    (
+        "md",
+        """**Lendo a tabela com honestidade.** Como antecipado, neste dataset sintético as três
+estratégias entregam Fβ/recall/cobertura **praticamente iguais** (diferenças na casa do
+milésimo) — coerente com a alta fração de grupos de tamanho 1 medida acima. Ou seja: aqui
+o split `row` **não** infla materialmente as métricas, porque quase não há registro
+compartilhado para vazar.
+
+Isso **não** enfraquece a regra metodológica — apenas a contextualiza. Em dados reais de
+*record linkage*, um mesmo indivíduo costuma participar de **muitos** pares candidatos
+(blocking gera dezenas de comparações por registro). Nesse cenário o split `row` mistura o
+mesmo registro entre treino e teste e **infla** o desempenho aparente; por isso a avaliação
+correta usa split **group-aware** (`COMPREC`/`REFREC`), que é o default adotado em todo o
+restante desta seção. A demonstração serve para você reconhecer o mecanismo e exigir o split
+certo quando os grupos forem grandes.""",
+    ),
+    (
+        "md",
+        """### 13.4 Curvas PR e ROC da rota B
+
+As métricas anteriores dependem dos limiares de política. Para ver todos os pontos de operação possíveis, reutilizamos `y_test` e `p_cal_test` já produzidos na seção 9.3 pela rota B held-out. Não recalculamos o split: aqui apenas varremos o limiar sobre a probabilidade calibrada.
+
+A curva Precision-Recall é especialmente útil quando a prevalência de `MATCH` é baixa; a ROC mostra a troca entre taxa de falso positivo e verdadeiro positivo em outra escala.""",
+    ),
+    (
+        "code",
+        """from sklearn.metrics import auc, precision_recall_curve, roc_curve
+
+y_test_arr = np.asarray(y_test, dtype=int)
+p_cal_test_arr = np.asarray(p_cal_test, dtype=float)
+
+precision_curve, recall_curve, _ = precision_recall_curve(y_test_arr, p_cal_test_arr)
+fpr_curve, tpr_curve, _ = roc_curve(y_test_arr, p_cal_test_arr)
+
+pr_auc = auc(recall_curve, precision_curve)
+roc_auc = auc(fpr_curve, tpr_curve)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+
+axes[0].plot(recall_curve, precision_curve, label=f"PR-AUC = {pr_auc:.3f}")
+axes[0].set_xlabel("Recall")
+axes[0].set_ylabel("Precisão")
+axes[0].set_title("Curva Precision-Recall (rota B)")
+axes[0].set_xlim(0, 1.02)
+axes[0].set_ylim(0, 1.02)
+axes[0].grid(alpha=0.25)
+axes[0].legend(loc="lower left")
+
+axes[1].plot(fpr_curve, tpr_curve, label=f"ROC-AUC = {roc_auc:.3f}")
+axes[1].plot([0, 1], [0, 1], linestyle="--", color="gray", label="aleatório")
+axes[1].set_xlabel("Taxa de falso positivo")
+axes[1].set_ylabel("Taxa de verdadeiro positivo")
+axes[1].set_title("Curva ROC (rota B)")
+axes[1].set_xlim(0, 1.02)
+axes[1].set_ylim(0, 1.02)
+axes[1].grid(alpha=0.25)
+axes[1].legend(loc="lower right")
+
+plt.tight_layout()
+plt.show()
+
+{"PR-AUC": pr_auc, "ROC-AUC": roc_auc}""",
+    ),
+    (
+        "md",
+        """### 13.5 Custo esperado versus limiar de MATCH
+
+Na seção 11 discutimos como modos diferentes penalizam FP e FN de formas diferentes. Agora traduzimos isso em custo esperado: para cada limiar τ, predizemos `MATCH` quando `p_cal_test >= τ` e somamos `FP*c_fp + FN*c_fn`.
+
+As linhas verticais mostram os limiares de auto-MATCH da política (`min_auto_match`). O ponto de menor custo da curva é um diagnóstico: ele não substitui a política, mas indica se o limiar operacional está conservador ou agressivo para a matriz de custos escolhida.""",
+    ),
+    (
+        "code",
+        """thresholds = np.linspace(0, 1, 101)
+mode_costs_32 = {
+    "vigilancia": {"false_positive": 10, "false_negative": 50, "min_auto_match": 0.85},
+    "confirmacao": {"false_positive": 100, "false_negative": 20, "min_auto_match": 0.95},
+}
+
+cost_rows = []
+for mode, costs in mode_costs_32.items():
+    for tau in thresholds:
+        pred_match = p_cal_test_arr >= tau
+        fp = int(((pred_match == 1) & (y_test_arr == 0)).sum())
+        fn = int(((pred_match == 0) & (y_test_arr == 1)).sum())
+        total_cost = fp * costs["false_positive"] + fn * costs["false_negative"]
+        cost_rows.append({"mode": mode, "tau": tau, "fp": fp, "fn": fn, "total_cost": total_cost})
+
+cost_df = pd.DataFrame(cost_rows)
+best_cost = cost_df.loc[cost_df.groupby("mode")["total_cost"].idxmin()].copy()
+
+fig, ax = plt.subplots(figsize=(9, 5))
+for mode, group in cost_df.groupby("mode"):
+    ax.plot(group["tau"], group["total_cost"], label=f"custo — {mode}")
+    policy_tau = mode_costs_32[mode]["min_auto_match"]
+    ax.axvline(policy_tau, linestyle="--", alpha=0.65, label=f"limiar política — {mode}: {policy_tau:.2f}")
+    best_row = best_cost.loc[best_cost["mode"] == mode].iloc[0]
+    ax.scatter(best_row["tau"], best_row["total_cost"], s=55)
+    ax.annotate(
+        f"τ*={best_row['tau']:.2f}",
+        xy=(best_row["tau"], best_row["total_cost"]),
+        xytext=(5, 8),
+        textcoords="offset points",
+    )
+
+ax.set_xlabel("Limiar τ para predizer MATCH")
+ax.set_ylabel("Custo total no teste")
+ax.set_title("Custo esperado por limiar e modo")
+ax.grid(alpha=0.25)
+ax.legend(loc="best")
+plt.show()
+
+best_cost[["mode", "tau", "fp", "fn", "total_cost"]]""",
+    ),
+    (
+        "md",
+        """### 13.6 Interpretação e próximos passos
+
+O trade-off central é **precisão × recall × cobertura**. Em `vigilancia`, o custo de falso negativo é maior; por isso, esperamos uma política mais tolerante a revisar ou aceitar candidatos para proteger recall. Em `confirmacao`, falso positivo custa mais; a política tende a exigir evidência mais forte antes de auto-confirmar `MATCH`, o que pode reduzir cobertura ou recall automático.
+
+A prevalência também importa. Quando a taxa-base de `MATCH` é baixa, pequenas mudanças em FP afetam muito a precisão; quando há poucos positivos, o recall fica sensível a poucos FN. Por isso a calibração Platt e o ponto de operação devem ser lidos junto com prevalência, matriz de custos e cobertura automática — não como métricas isoladas.
+
+**Recap.** Avaliamos a rota B em múltiplas sementes, vimos por que split por linha pode inflar métricas, interpretamos PR/ROC e conectamos limiares a custo esperado. **O que vem a seguir:** na Fase 3.3, entraremos no stub de LLM para estudar como a revisão assistida pode atuar sobre os casos `LLM_REVIEW` sem contaminar a avaliação held-out.""",
+    ),
+]
+
+
 ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_1,
     FASE_2_2,
@@ -1390,6 +1648,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_2_5,
     FASE_2_6,
     FASE_3_1,
+    FASE_3_2,
 ]
 
 

@@ -48,6 +48,7 @@ def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
         "## 10. Guardrails",
         "## 11. Política de decisão",
         "## 12. Reconciliação",
+        "## 13. Avaliação held-out",
     ]
     faltando = [s for s in esperadas if s not in markdown]
     assert not faltando, f"Seções ausentes no notebook: {faltando}"
