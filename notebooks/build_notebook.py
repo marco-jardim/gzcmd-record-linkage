@@ -763,7 +763,7 @@ print(f"p_cal (in-sample) — min={df['p_cal'].min():.4f}, max={df['p_cal'].max(
     (
         "md",
         """\
-> ⚠️ **Por que a rota A NÃO mede generalização (vazamento — R-10).** Ajustamos os
+> ⚠️ **Por que a rota A NÃO mede generalização (vazamento).** Ajustamos os
 > parâmetros usando os **mesmos** rótulos sobre os quais depois medimos o acerto. Um
 > *reliability diagram* feito aqui seria **otimista por construção**: o modelo "já
 > viu" cada ponto. Para medir calibração de verdade, precisamos de dados **não
@@ -858,7 +858,7 @@ gerou cada rótulo. Podemos então perguntar algo que com dados reais é **impos
 *o Platt recuperou a verdade?* A figura sobrepõe, no **teste**, o `p_cal` estimado
 contra `p*`. Se o método funciona, os pontos seguem a diagonal.
 
-> **Anti-circularidade (DEC-06).** `p*` foi definida **antes** dos rótulos
+> **Anti-circularidade.** `p*` foi definida **antes** dos rótulos
 > (`TARGET ~ Bernoulli(p*)`) e **nunca** entrou no pipeline. Recuperá-la é evidência
 > genuína de que a calibração funciona — não uma tautologia.""",
     ),
@@ -886,7 +886,7 @@ print("Interpretação: valores pequenos (~0.01–0.03) provam recuperação da 
     (
         "md",
         """\
-### 9.6 Configuração × código: o que a *config* promete e o que o código faz (R-11)
+### 9.6 Configuração × código: o que a *config* promete e o que o código faz
 
 A `gzcmd_v3_config.yaml` descreve a calibração como `method: anchor_platt` com
 `by_band: true` (um Platt **por banda**, ancorado). **Porém**, o código realmente
@@ -905,11 +905,11 @@ científico — apresentar a config como se fosse a implementação seria engano
 
 A biblioteca também permite `p_cal` a partir de um classificador (`GZCMDClassifier`
 com Random Forest/XGBoost), via `predict_proba(df)[:, 1]`. Para **este material
-didático** mantemos o **Platt** como método principal (DEC-02): ele é 1-D,
+didático** mantemos o **Platt** como método principal: ele é 1-D,
 visualizável e **determinístico**, o que o torna ideal para ensinar calibração e para
 **reconciliar** com `run_v3` ao bit (seção 12). O caminho XGBoost é mencionado para
 completude, mas **não é executado aqui** porque (a) introduz não-determinismo entre
-threads/execuções (R-13) e (b) não acrescenta clareza conceitual sobre *calibração*.
+threads/execuções e (b) não acrescenta clareza conceitual sobre *calibração*.
 A comparação ML × Platt é deixada como exercício para o leitor com `n_jobs=1` + seed
 fixa.""",
     ),
@@ -935,7 +935,7 @@ card_heroi(df, hero_idx, ["nota_final", "TARGET", "band", "p_cal"])""",
 **rota A** (in-sample, reproduz `run_v3`, mas vaza) de **rota B** (held-out,
 *group-aware*, honesta), medimos a calibração com **ECE** e **Brier** no teste e
 **provamos** — contra a posterior verdadeira `p*` — que o Platt recupera a verdade.
-Também declaramos a divergência **config × código** (R-11). **A seguir:** as regras de
+Também declaramos a divergência **config × código**. **A seguir:** as regras de
 segurança determinísticas — os **guardrails**.""",
     ),
 ]
@@ -1000,7 +1000,7 @@ As regras implementadas hoje são:
 4. **`nota_final_high` → `ALWAYS_MATCH`**: notas extremamente altas são âncoras
    positivas; o cenário `match_obvio` representa esse caso.
 
-> **R-11 (config × código).** A configuração menciona uma regra suave
+> **Config × código.** A configuração menciona uma regra suave
 > `grey_mother_missing`, mas ela **não está implementada no código atual**. Portanto,
 > o cenário `mae_ausente` não deve ser interpretado como capturado por guardrail;
 > ele segue para a etapa de triagem.""",
@@ -1323,7 +1323,7 @@ acoes_heroi""",
         """
 ### Recap da seção e o que vem a seguir
 
-A triagem fecha a Wave 2: agora o notebook tem bandas, calibração, guardrails e política de
+A triagem encerra a etapa de reprodução dos estágios: agora o notebook tem bandas, calibração, guardrails e política de
 decisão por custo esperado. Vimos que:
 
 - `MATCH` e `NONMATCH` são comparados por perda esperada;
@@ -1331,7 +1331,7 @@ decisão por custo esperado. Vimos que:
 - `vigilancia` prioriza recall, enquanto `confirmacao` prioriza precisão;
 - pares de zona cinzenta podem mudar de ação entre modos sem que o modelo esteja “errado”.
 
-Na Wave 3, o próximo passo é reconciliar esta leitura didática com `run_v3` e medir desempenho
+A seguir, o próximo passo é reconciliar esta leitura didática com `run_v3` e medir desempenho
 em held-out: métricas finais, auditoria de decisões e comparação ponta a ponta.
 """,
     ),
@@ -1350,9 +1350,9 @@ FASE_3_1 = [
 Há duas rotas conceituais:
 
 - **Rota A (in-sample):** ajusta a calibração no mesmo conjunto usado na triagem manual. Esta rota deve reconciliar exatamente com `run_v3`.
-- **Rota B (held-out, Fase 2.4):** separa treino/teste para medir generalização. Ela difere **por desenho**, porque o split muda os dados usados no ajuste e, portanto, os números esperados.
+- **Rota B (held-out, seção 9):** separa treino/teste para medir generalização. Ela difere **por desenho**, porque o split muda os dados usados no ajuste e, portanto, os números esperados.
 
-**Ação.** Vamos executar `run_v3` com `p_cal='fit_platt'` e comparar com `out_vig`, a triagem manual da rota A construída na Fase 11.
+**Ação.** Vamos executar `run_v3` com `p_cal='fit_platt'` e comparar com `out_vig`, a triagem manual da rota A construída na seção 11.
 
 **Recap.** Se os parâmetros e o conjunto de ajuste são os mesmos, a reconciliação deve ser exata; se a rota é held-out, a diferença é esperada e correta.""",
     ),
@@ -1378,7 +1378,7 @@ out_run, summary = run_v3(
     p_cal="fit_platt",
 )
 
-# Comparação coluna a coluna com a rota A manual (out_vig, da Fase 11)
+# Comparação coluna a coluna com a rota A manual (out_vig, da seção 11)
 import numpy as np
 
 band_identico = bool((out_run["band"].to_numpy() == out_vig["band"].to_numpy()).all())
@@ -1415,7 +1415,7 @@ resumo""",
 
 Já a rota B, held-out, difere de propósito: ela faz split treino/teste para estimar desempenho fora da amostra. Como o ajuste é feito em outro subconjunto, os valores de `p_cal` e as métricas podem mudar. Isso não é bug; é exatamente o que queremos para medir generalização.
 
-**R-13.** Para modelos como XGBoost ou Random Forest, a reconciliação deve ser tratada como qualitativa. Mesmo com seeds, pode haver não-determinismo entre threads, bibliotecas e execuções; portanto, verificamos propriedades agregadas e domínio das ações, não igualdade bit a bit.""",
+**Não-determinismo de modelos de árvore.** Para modelos como XGBoost ou Random Forest, a reconciliação deve ser tratada como qualitativa. Mesmo com seeds, pode haver não-determinismo entre threads, bibliotecas e execuções; portanto, verificamos propriedades agregadas e domínio das ações, não igualdade bit a bit.""",
     ),
     (
         "md",
@@ -1431,7 +1431,7 @@ FASE_3_2 = [
 
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **avaliar** métricas em teste held-out, **comparar** modos de triagem sob múltiplas sementes, **diagnosticar** vazamento por split ingênuo, **interpretar** curvas PR/ROC e **relacionar** limiares de política a custo esperado.
 
-**Intuição.** Na seção 9 discutimos o risco R-10: medir desempenho no mesmo conjunto usado para ajustar a calibração produz uma leitura otimista. A rota B separa treino e teste por grupo (`COMPREC`) para que o Platt seja ajustado no treino e avaliado em pares não vistos no teste.
+**Intuição.** Na seção 9 discutimos o risco de vazamento: medir desempenho no mesmo conjunto usado para ajustar a calibração produz uma leitura otimista. A rota B separa treino e teste por grupo (`COMPREC`) para que o Platt seja ajustado no treino e avaliado em pares não vistos no teste.
 
 Também vamos acompanhar **cobertura automática**: a fração de pares que saem como decisão automática (`MATCH` ou `NONMATCH`) em vez de `LLM_REVIEW`. Cobertura alta reduz custo operacional, mas pode pressionar precisão ou recall dependendo do modo.
 
@@ -1678,7 +1678,7 @@ O trade-off central é **precisão × recall × cobertura**. Em `vigilancia`, o 
 
 A prevalência também importa. Quando a taxa-base de `MATCH` é baixa, pequenas mudanças em FP afetam muito a precisão; quando há poucos positivos, o recall fica sensível a poucos FN. Por isso a calibração Platt e o ponto de operação devem ser lidos junto com prevalência, matriz de custos e cobertura automática — não como métricas isoladas.
 
-**Recap.** Avaliamos a rota B em múltiplas sementes, vimos por que split por linha pode inflar métricas, interpretamos PR/ROC e conectamos limiares a custo esperado. **O que vem a seguir:** na Fase 3.3, entraremos no stub de LLM para estudar como a revisão assistida pode atuar sobre os casos `LLM_REVIEW` sem contaminar a avaliação held-out.""",
+**Recap.** Avaliamos a rota B em múltiplas sementes, vimos por que split por linha pode inflar métricas, interpretamos PR/ROC e conectamos limiares a custo esperado. **O que vem a seguir:** a seguir, entraremos no stub de LLM para estudar como a revisão assistida pode atuar sobre os casos `LLM_REVIEW` sem contaminar a avaliação held-out.""",
     ),
 ]
 
@@ -1690,11 +1690,11 @@ FASE_3_3 = [
 
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **explicar** o papel da revisão clerical/LLM na zona cinzenta, **descrever** o protocolo `dual_agent_plus_arbiter`, **simular** a revisão de forma determinística e offline, e **medir** seu efeito sobre as decisões finais — sem confundir simulação com um LLM real.
 
-**Intuição.** A política de triagem não decide tudo sozinha: os pares mais ambíguos saem como `LLM_REVIEW` para inspeção assistida. Numa operação real, um modelo de linguagem (ou um par de revisores humanos) examinaria o dossiê de cada par e devolveria `MATCH`/`NONMATCH`. Aqui **não chamamos nenhuma API** — isso quebraria a reprodutibilidade e exigiria rede na apresentação (R-05).
+**Intuição.** A política de triagem não decide tudo sozinha: os pares mais ambíguos saem como `LLM_REVIEW` para inspeção assistida. Numa operação real, um modelo de linguagem (ou um par de revisores humanos) examinaria o dossiê de cada par e devolveria `MATCH`/`NONMATCH`. Aqui **não chamamos nenhuma API** — isso quebraria a reprodutibilidade e exigiria rede na apresentação.
 
 **O protocolo `dual_agent_plus_arbiter` (conceitual).** A config descreve um protocolo de consenso: dois agentes (A e B) revisam o mesmo dossiê de forma independente; se concordam, a decisão é aceita; se discordam, um terceiro agente **árbitro** desempata. A ideia espelha o esquema "2 revisores + consenso" e reduz a variância de um único revisor.
 
-> **Honestidade científica (R-05 / CA-G6).** O que usamos abaixo é um **stub de simulação**, não um LLM. O stub "enxerga" o rótulo verdadeiro (`TARGET`) e devolve a decisão correta na maioria das vezes, **errando com as taxas por banda da própria config** (`e_fp`/`e_fn`). Serve para demonstrar, de forma determinística, o *efeito* da revisão sobre as métricas — jamais para afirmar desempenho de um LLM real.""",
+> **Honestidade científica.** O que usamos abaixo é um **stub de simulação**, não um LLM. O stub "enxerga" o rótulo verdadeiro (`TARGET`) e devolve a decisão correta na maioria das vezes, **errando com as taxas por banda da própria config** (`e_fp`/`e_fn`). Serve para demonstrar, de forma determinística, o *efeito* da revisão sobre as métricas — jamais para afirmar desempenho de um LLM real.""",
     ),
     (
         "md",
@@ -1798,7 +1798,7 @@ FASE_INTERATIVO: list[tuple[str, str]] = [
 
 **Intuição.** As seções anteriores fixaram limiares e *slope*. Aqui você "pega no volante": mover o limiar para a direita exige mais confiança para declarar `MATCH` (sobe a precisão, cai o recall); reescalar o *slope* torna a curva de calibração mais íngreme ou mais suave. O custo esperado (FP×10 + FN×50, modo `vigilancia`) reage a cada escolha. Reutilizamos o conjunto de **teste held-out** e o modelo Platt da seção 9.3 — ou seja, brincamos com a rota metodologicamente correta.
 
-> **Headless-safe (DEC-10 / CA-G1).** Esta célula **sempre** renderiza uma figura **estática** (limiar 0,50, *slope* ×1,0), garantindo saída reprodutível na execução automatizada (`papermill`/`nbconvert`). Os **sliders** do `ipywidgets` só ativam quando há um frontend Jupyter ao vivo; em modo headless são ignorados sem erro (protegidos por `try/except`). Para interagir, abra o notebook no Jupyter Lab/Notebook e execute esta célula.""",
+> **Headless-safe.** Esta célula **sempre** renderiza uma figura **estática** (limiar 0,50, *slope* ×1,0), garantindo saída reprodutível na execução automatizada (`papermill`/`nbconvert`). Os **sliders** do `ipywidgets` só ativam quando há um frontend Jupyter ao vivo; em modo headless são ignorados sem erro (protegidos por `try/except`). Para interagir, abra o notebook no Jupyter Lab/Notebook e execute esta célula.""",
     ),
     (
         "code",
@@ -1854,7 +1854,7 @@ def painel_operacao(limiar=0.50, escala_slope=1.0):
 painel_operacao(limiar=0.50, escala_slope=1.0)
 
 # Versao INTERATIVA: so ativa quando ha um frontend de widgets (Jupyter ao vivo).
-# Protegida por try/except para nunca quebrar a execucao headless (DEC-10 / CA-G1).
+# Protegida por try/except para nunca quebrar a execucao headless.
 try:
     import ipywidgets as widgets
     from IPython.display import display
@@ -1921,21 +1921,21 @@ As limitações abaixo são parte essencial da leitura honesta:
   posterior verdadeira conhecida `p_true`. Isso é ótimo para *provar* que a calibração recupera a
   verdade, mas as distribuições, a prevalência (`match_ratio`) e a estrutura de subscores foram
   escolhidas para a didática — **não** refletem uma base populacional real.
-- **In-sample × held-out (R-10).** O `run_v3` calibra *in-sample* (ajusta e pontua as mesmas
+- **In-sample × held-out.** O `run_v3` calibra *in-sample* (ajusta e pontua as mesmas
   linhas). Um *reliability diagram* sobre esses mesmos dados é otimista por construção. **Só** a
   rota B (held-out, via `evaluate_v3_dataframe`) mede generalização — e foi nela que reportamos as
   métricas.
-- **Config × código (R-11).** A config promete calibração `anchor_platt` **por banda** e uma regra
+- **Config × código.** A config promete calibração `anchor_platt` **por banda** e uma regra
   `grey_mother_missing`; o código implementado faz **Platt global** e **não** aplica aquela regra.
   Ensinamos **o que o código faz**, tratando a config como intenção/roadmap.
 - **Vazamento por grupo.** Demonstramos o split *group-aware*, mas neste sintético o efeito de
   vazamento é **negligenciável por construção** (os grupos `COMPREC`/`REFREC` são quase todos
   singletons). Em produção, com *blocking* e múltiplos pares por registro, o split por linha
   inflaria as métricas — por isso o split por grupo é a prática correta.
-- **LLM simulado (R-05).** A etapa de revisão é um **stub determinístico** que usa o rótulo
+- **LLM simulado.** A etapa de revisão é um **stub determinístico** que usa o rótulo
   verdadeiro `TARGET` mais taxas de erro por banda. **Não** é um LLM real, não há chamada de rede,
   e a "acurácia" do stub é um artefato das taxas injetadas — não uma medida de um modelo real.
-- **XGBoost não-determinístico (R-13).** O apêndice de ML é apenas **qualitativo**: a reconciliação
+- **XGBoost não-determinístico.** O apêndice de ML é apenas **qualitativo**: a reconciliação
   exata vale para o Platt determinístico, não para o XGBoost.
 - **Âncora de guardrail.** O `ALWAYS_MATCH` real exige `nota_final ≥ 10` **e** nome/data/município
   perfeitos — mais estrito do que a leitura ingênua de "`nota ≥ 9`".
