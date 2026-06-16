@@ -44,7 +44,7 @@ def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
         "feature engineering",
         "## 8. Atribuição de bandas",
         "## 9. Calibração",
-        "Reliability diagram",
+        "boletim da calibração",
         "## 10. Guardrails",
         "## 11. Política de decisão",
         "## 12. Reconciliação",

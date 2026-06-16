@@ -374,6 +374,12 @@ FASE_2_2: list[tuple[str, str]] = [
         """\
 ## 7. Carga dos dados e *feature engineering*
 
+> 🧒 **A ideia em uma frase.** O comparador já mediu **pistas** sobre cada par: o
+> quanto os nomes batem, se as datas coincidem, se o endereço é parecido… Aqui só
+> **organizamos essas pistas** em poucos números limpos (notas de 0 a 1 por dimensão)
+> e levantamos algumas **bandeiras de alerta** (ex.: "nome da mãe ausente"). É a
+> matéria-prima que o resto do pipeline vai usar para decidir.
+
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
 - **explicar** o que o `loader` faz ao ler o CSV cru (resolução de colunas, *parsing* de datas);
@@ -548,6 +554,11 @@ FASE_2_3: list[tuple[str, str]] = [
         """\
 ## 8. Atribuição de bandas
 
+> 🧒 **A ideia em uma frase.** É como transformar a nota de uma prova em **conceitos**
+> (A, B, C, D…): em vez do número solto "7,3", dizemos "este par está na faixa
+> `grey_high`". As faixas do **meio** (as `grey_*`) são a famosa **zona cinzenta** —
+> nem claramente "sim", nem claramente "não" —, e é nelas que mora toda a dificuldade.
+
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
 - **explicar** por que discretizar a `nota_final` contínua em **bandas** nomeadas;
@@ -689,24 +700,47 @@ FASE_2_4: list[tuple[str, str]] = [
         """\
 ## 9. Calibração: de escore a **probabilidade** confiável
 
+> 🧒 **A ideia em uma frase.** Pense no apresentador da previsão do tempo. Se ele diz
+> *"70% de chance de chuva"* e, ao longo de muitos dias em que falou isso, realmente
+> chove em ~70% deles, então o número dele é **confiável** (calibrado). Calibrar o
+> nosso sistema é a mesma coisa: transformar a `nota_final` (um **placar** de 0 a 10)
+> numa **probabilidade honesta** de os dois registros serem a mesma pessoa.
+
+**A pegadinha.** Uma "nota 8" **não** quer dizer "80% de chance de match". A nota é
+como a **nota de uma prova**; o que de fato queremos é a **chance real de passar**.
+A *calibração* é exatamente o que converte uma coisa na outra: produz `p_cal ∈ [0, 1]`,
+a probabilidade sobre a qual a política de custo (seção 11) vai decidir. Com ela
+podemos afirmar, sem enganar ninguém, "este par tem 92% de chance de ser a mesma pessoa".
+
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
-- **explicar** o que significa uma probabilidade *calibrada* e por que a `nota_final` crua **não** é uma probabilidade;
-- **derivar** o *Platt scaling* (`p = σ(a·s + b)`) e interpretar `a` (inclinação) e `b` (viés) geometricamente;
-- **distinguir** avaliação **in-sample** (rota A, reproduz a ferramenta) de **held-out** (rota B, mede generalização);
-- **medir** a qualidade da calibração com **ECE** e **Brier**, e **validar** o resultado contra a posterior verdadeira `p*`.
-
-**Intuição.** A `nota_final` ordena os pares (quanto maior, mais provável o match),
-mas seu valor numérico não é uma probabilidade: "nota 8" não quer dizer "80% de
-chance de match". **Calibrar** é aprender a função monótona que converte o escore na
-**probabilidade real** de match, `p_cal ∈ [0, 1]`. Com `p_cal` podemos, por exemplo,
-afirmar honestamente "este par tem 92% de chance de ser a mesma pessoa" — e é sobre
-`p_cal` que a política de custo (seção 11) tomará decisões.""",
+- **explicar** o que é uma probabilidade *calibrada* e por que a `nota_final` crua **não** é uma;
+- **entender** a ideia do *Platt scaling* (o "botão" que vira nota em probabilidade) — com a matemática disponível, mas opcional;
+- **distinguir** "treinar e testar no mesmo lugar" (rota A) de "testar com dados novos" (rota B);
+- **ler** o boletim de calibração (*reliability diagram*) e os números **ECE** e **Brier**;
+- **conferir** se o modelo recuperou a verdade que só nós, criadores do mundo sintético, conhecemos (`p*`).""",
     ),
     (
         "md",
         r"""\
-### 9.1 Derivação do *Platt scaling*
+### 9.1 Como viramos a nota em probabilidade (o "botão" Platt)
+
+**Ideia sem matemática.** O *Platt scaling* é como um **botão giratório** (um
+*dimmer* de luz) que pega o placar cru e o **entorta suavemente** até virar uma
+probabilidade entre 0 e 1. Esse botão tem só **dois parafusos** de ajuste:
+
+- **inclinação (`a`):** quão **rápido** a probabilidade sobe quando a nota aumenta —
+  é a "sensibilidade" do botão. Inclinação alta = transição abrupta de "não" para "sim".
+- **deslocamento (`b`):** **onde** fica o ponto de "50% de chance" — a *nota de
+  indiferença*. Acima dela, o sistema começa a apostar em match.
+
+A máquina **aprende sozinha** o melhor ajuste desses dois parafusos olhando exemplos
+já rotulados. E faz isso de forma **determinística**: mesma entrada → mesma saída,
+sem nenhum sorteio. Guarde esse detalhe — ele é o que permite, na seção 12, reproduzir
+a ferramenta oficial *no bit*.
+
+<details>
+<summary>📐 Para quem quiser a matemática (opcional — pode pular sem perder o fio)</summary>
 
 Seja $s$ a `nota_final` de um par e $y \in \{0,1\}$ o rótulo verdadeiro (1 = match).
 O Platt modela a probabilidade de match como uma **regressão logística 1-D** sobre o
@@ -714,35 +748,40 @@ escore:
 
 $$ p(s) = \sigma(a\,s + b), \qquad \sigma(z) = \frac{1}{1 + e^{-z}}. $$
 
-- $a$ (**inclinação**, *slope*): controla **quão rápido** a probabilidade sobe com a
-  nota. Quanto maior $a$, mais "abrupta" é a transição de não-match para match.
-- $b$ (**viés**, *intercept*): **desloca** a curva. O ponto onde $p = 0.5$ ocorre em
-  $s^\star = -b/a$ — a "nota de indiferença".
+- $a$ (**inclinação**, *slope*) controla quão rápido a probabilidade sobe com a nota.
+- $b$ (**viés**, *intercept*) desloca a curva; o ponto onde $p = 0.5$ ocorre em
+  $s^\star = -b/a$ (a "nota de indiferença").
 
-**Ajuste por máxima verossimilhança.** Estimamos $(a, b)$ minimizando a
-**log-verossimilhança negativa** (NLL) com **regularização L2 apenas na inclinação**
-(exatamente como a biblioteca faz):
+Estimamos $(a, b)$ minimizando a **log-verossimilhança negativa** (NLL) com
+**regularização L2 apenas na inclinação** (exatamente como a biblioteca faz):
 
 $$ \mathcal{L}(a,b) = -\sum_{i} \Big[ y_i \log p(s_i) + (1-y_i)\log\big(1-p(s_i)\big) \Big] \;+\; \tfrac{1}{2}\,\lambda\, a^2. $$
 
-A biblioteca resolve isso por **Newton–Raphson** (atualização $w \leftarrow w - H^{-1}g$,
+A biblioteca resolve por **Newton–Raphson** (atualização $w \leftarrow w - H^{-1}g$,
 com $g$ o gradiente e $H$ a Hessiana 2×2), inicializando $b$ no *log-odds* da taxa de
-base e $a=0$. O procedimento é **determinístico** (sem aleatoriedade): mesma entrada,
-mesma saída — fato que exploraremos na reconciliação com `run_v3` (seção 12).
+base e $a=0$. Penalizar só $a$ evita curvas absurdamente íngremes quando há poucos
+dados, enquanto deixar $b$ livre preserva a capacidade de acertar a **prevalência**
+(taxa de base) da amostra.
 
-> **Por que L2 só na inclinação?** Penalizar $a$ evita curvas absurdamente íngremes
-> quando há poucos dados; deixar $b$ livre preserva a capacidade de acertar a
-> **prevalência** (taxa de base) da amostra.""",
+</details>""",
     ),
     (
         "md",
         """\
-### 9.2 Rota A — reprodução **fiel** da ferramenta (in-sample)
+### 9.2 Rota A — reprodução fiel da ferramenta (treina e testa no mesmo lugar)
+
+**Analogia.** Imagine estudar para uma prova **com o gabarito na mão** e depois "se
+testar" exatamente nas **mesmas questões**, ainda com o gabarito do lado. Sua nota
+sai ótima — mas isso **não prova** que você aprendeu. A rota A faz isso: ajusta o
+botão e mede o acerto **nas mesmas linhas**.
+
+**Por que então fazê-la?** Porque é exatamente o que a ferramenta oficial
+`run_v3(p_cal="fit_platt")` faz por dentro. Reproduzi-la fielmente nos permite, na
+seção 12, provar que entendemos a ferramenta. Só não vale usá-la para dizer se o
+sistema **generaliza** — a armadilha está logo abaixo.
 
 **O que vamos fazer a seguir.** Ajustar o Platt em **todas** as linhas e pontuar
-**essas mesmas linhas** — exatamente o que `run_v3(p_cal="fit_platt")` faz
-internamente. Isso reproduz a ferramenta com fidelidade (usaremos isso na seção 12),
-mas tem uma armadilha que tornamos explícita logo abaixo.""",
+**essas mesmas linhas**.""",
     ),
     (
         "code",
@@ -763,22 +802,36 @@ print(f"p_cal (in-sample) — min={df['p_cal'].min():.4f}, max={df['p_cal'].max(
     (
         "md",
         """\
-> ⚠️ **Por que a rota A NÃO mede generalização (vazamento).** Ajustamos os
-> parâmetros usando os **mesmos** rótulos sobre os quais depois medimos o acerto. Um
-> *reliability diagram* feito aqui seria **otimista por construção**: o modelo "já
-> viu" cada ponto. Para medir calibração de verdade, precisamos de dados **não
-> usados no ajuste** — é a rota B.""",
+> ⚠️ **Por que a rota A engana.** Como o botão foi ajustado **vendo os mesmos
+> rótulos** que usamos depois para medir o acerto, qualquer boletim feito aqui sai
+> "bonito demais" — o modelo "já viu" cada resposta (isso se chama *vazamento*). Para
+> medir de verdade, precisamos avaliá-lo em dados que ele **nunca viu**. É a rota B.""",
     ),
     (
         "md",
         """\
-### 9.3 Rota B — metodologia **correta** (held-out, *group-aware*)
+### 9.3 Rota B — o jeito honesto (testar com questões novas)
 
-**O que vamos fazer a seguir.** Separar treino/teste de forma **group-aware** por
-`COMPREC` (todas as linhas de um mesmo registro ficam do mesmo lado — evita o
-vazamento por registro compartilhado, típico de *record linkage*). Ajustamos o Platt
-**só no treino** e pontuamos **só no teste**. Toda métrica de calibração honesta vem
-daqui.""",
+**Analogia.** Agora a prova **de verdade**: estudamos com um conjunto de exemplos
+(o **treino**) e somos avaliados em **questões que nunca vimos** (o **teste**). Só
+assim descobrimos se realmente aprendemos — ou se só decoramos o gabarito.
+
+**Um cuidado extra: não deixar "cola" passar.** Em vinculação de registros, o mesmo
+registro pode aparecer em vários pares. Se um pedaço dele caísse no treino e outro no
+teste, seria como ver uma questão da prova durante o estudo. Para impedir isso,
+separamos **por registro** (`COMPREC`): todas as linhas de um mesmo registro vão para
+o **mesmo lado**. É o que chamamos de divisão *group-aware*.
+
+**Duas notas de honestidade (que o código abaixo imprime).** Vamos resumir a
+calibração em dois números:
+
+- **ECE** — a **distância média entre o que o modelo promete e o que de fato acontece**.
+  Se ele diz "70%" e acerta ~70%, a distância é zero. Quanto **menor**, mais honesto.
+- **Brier** — uma espécie de **"tacada de golfe" das probabilidades**: pune previsões
+  ao mesmo tempo **confiantes e erradas**. Quanto **menor**, melhor.
+
+**O que vamos fazer a seguir.** Ajustar o Platt **só no treino** e pontuar **só no
+teste**; toda métrica de calibração honesta vem daqui.""",
     ),
     (
         "code",
@@ -808,12 +861,17 @@ print(f"  Brier score....................  = {brier_holdout:.4f}  (menor é melh
     (
         "md",
         """\
-### 9.4 *Reliability diagram* (no teste held-out)
+### 9.4 O boletim da calibração (*reliability diagram*)
+
+**Analogia.** É um **boletim**: separamos as previsões em grupinhos ("os pares em que
+o modelo deu ~70%", "os que deu ~90%"...) e, em cada grupo, conferimos se a fração
+real de matches bate com a confiança anunciada. Se as bolinhas caem **em cima da linha
+diagonal**, o modelo é honesto; **acima** da linha ele foi tímido (errou para menos),
+**abaixo** ele foi exagerado (prometeu mais do que entregou).
 
 **Pergunta que a figura responde:** *quando o modelo diz "70%", a fração real de
-matches é mesmo ~70%?* Agrupamos as previsões do **teste** em faixas e comparamos a
-**confiança média** (eixo x) com a **acurácia empírica** (eixo y). Pontos sobre a
-diagonal = perfeitamente calibrado.""",
+matches é mesmo ~70%?* Eixo x = confiança média prevista; eixo y = acurácia empírica;
+tudo medido **no teste**.""",
     ),
     (
         "code",
@@ -851,16 +909,19 @@ plt.show()""",
     (
         "md",
         """\
-### 9.5 Validação contra a **posterior verdadeira** `p*` (a prova, não a ilustração)
+### 9.5 A prova final: comparar com a verdade que só nós conhecemos
 
-Como os dados são sintéticos, conhecemos `p_true = p*(s)` — a probabilidade real que
-gerou cada rótulo. Podemos então perguntar algo que com dados reais é **impossível**:
-*o Platt recuperou a verdade?* A figura sobrepõe, no **teste**, o `p_cal` estimado
-contra `p*`. Se o método funciona, os pontos seguem a diagonal.
+**Analogia.** Nós **construímos** este mundo sintético. Por isso sabemos um segredo
+que na vida real é **impossível** ter: a **chance verdadeira** de cada par ser a mesma
+pessoa (`p*`). É como ser o autor de um jogo de adivinhação e já conhecer a resposta.
+Então fazemos a pergunta decisiva: *o modelo, sem nunca ter visto esse segredo,
+conseguiu redescobrir essas chances?* Se as bolinhas seguem a diagonal, sim — e isso
+é **prova**, não sorte.
 
-> **Anti-circularidade.** `p*` foi definida **antes** dos rótulos
-> (`TARGET ~ Bernoulli(p*)`) e **nunca** entrou no pipeline. Recuperá-la é evidência
-> genuína de que a calibração funciona — não uma tautologia.""",
+> **Por que isso não é "trapaça".** A chance verdadeira `p*` foi definida **antes** de
+> sortear os rótulos (`TARGET ~ Bernoulli(p*)`) e **nunca** entrou no pipeline. O
+> modelo só viu as notas e os rótulos; recuperar `p*` é, portanto, mérito genuíno da
+> calibração — não um truque circular.""",
     ),
     (
         "code",
@@ -886,17 +947,18 @@ print("Interpretação: valores pequenos (~0.01–0.03) provam recuperação da 
     (
         "md",
         """\
-### 9.6 Configuração × código: o que a *config* promete e o que o código faz
+### 9.6 O manual de desejos × o que o código faz hoje
 
-A `gzcmd_v3_config.yaml` descreve a calibração como `method: anchor_platt` com
-`by_band: true` (um Platt **por banda**, ancorado). **Porém**, o código realmente
-executado por `run_v3` faz um **Platt global** (`fit_platt_from_df`), sem âncoras e
-sem separação por banda. 
+**Em linguagem simples.** O arquivo de configuração (`gzcmd_v3_config.yaml`) é como
+uma **lista de desejos** do projeto: ele descreve uma calibração mais sofisticada —
+um botão Platt **por banda**, ancorado (`method: anchor_platt`, `by_band: true`). Mas
+o código **realmente executado hoje** por `run_v3` faz um Platt **global**, mais
+simples (`fit_platt_from_df`), sem âncoras e sem separar por banda.
 
 Tratamos isso com honestidade: **este notebook ensina o que o código faz** (Platt
-global). A descrição da config é melhor entendida como **intenção de projeto /
-roadmap**, não como comportamento atual. Sinalizar essa divergência é parte do rigor
-científico — apresentar a config como se fosse a implementação seria enganoso.""",
+global). A lista de desejos vale como **intenção de projeto**, não como o
+comportamento atual. Mostrar a config como se já fosse a implementação seria enganar
+o leitor — e parte do rigor é justamente apontar essa diferença.""",
     ),
     (
         "md",
@@ -931,12 +993,13 @@ card_heroi(df, hero_idx, ["nota_final", "TARGET", "band", "p_cal"])""",
     (
         "md",
         """\
-**Recap da seção.** Derivamos o *Platt scaling* (`p = σ(a·s + b)`), distinguimos
-**rota A** (in-sample, reproduz `run_v3`, mas vaza) de **rota B** (held-out,
-*group-aware*, honesta), medimos a calibração com **ECE** e **Brier** no teste e
-**provamos** — contra a posterior verdadeira `p*` — que o Platt recupera a verdade.
-Também declaramos a divergência **config × código**. **A seguir:** as regras de
-segurança determinísticas — os **guardrails**.""",
+**Recap da seção (sem jargão).** Aprendemos a virar **placar** em **probabilidade
+honesta** com o "botão" Platt. Vimos por que treinar e testar no mesmo lugar (rota A)
+**engana**, e por que testar com dados novos (rota B) é o jeito **honesto**. Lemos o
+**boletim** de calibração e dois números — **ECE** (distância média entre promessa e
+realidade) e **Brier** (a "tacada de golfe" das probabilidades). E, como criadores do
+mundo sintético, **conferimos** que o modelo redescobriu a chance verdadeira `p*`.
+**A seguir:** as regras de segurança que mandam mais que tudo — os **guardrails**.""",
     ),
 ]
 
@@ -949,6 +1012,11 @@ FASE_2_5: list[tuple[str, str]] = [
         "md",
         """\
 ## 10. Guardrails
+
+> 🧒 **A ideia em uma frase.** Guardrails são **regras de segurança que mandam mais
+> que tudo** — como o aviso "se a pessoa morreu *antes* do diagnóstico, não pode ser a
+> mesma pessoa". São poucas regras simples e inegociáveis que pegam os casos óbvios
+> (e os perigosos) **antes** de qualquer cálculo de custo, evitando erros graves.
 
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
@@ -1070,6 +1138,14 @@ FASE_2_6: list[tuple[str, str]] = [
         """
 ## 11. Política de decisão (triagem)
 
+> 🧒 **A ideia em uma frase.** Para cada par, a política **pesa o custo de errar** e escolhe a
+> opção mais barata: dizer que é a mesma pessoa (`MATCH`), dizer que não é (`NONMATCH`) ou
+> **chamar um humano** para olhar (`LLM_REVIEW`). Não é um simples "passou de 0,5?".
+
+**Analogia.** É como um seguro. Aceitar um par errado e rejeitar um par certo têm "preços"
+diferentes — e esses preços mudam conforme o objetivo. Quando o erro é caro e a dúvida é grande,
+muitas vezes compensa pagar o "preço pequeno" de pedir uma segunda opinião antes de decidir.
+
 ### Objetivos de aprendizagem
 
 Ao final desta seção, você será capaz de:
@@ -1095,7 +1171,24 @@ uma revisão adicional pode ter valor econômico.
     (
         "md",
         r"""
-### T2.6.2 — Custo esperado e valor esperado da revisão
+### 11.1 Custo esperado e o valor de pedir ajuda
+
+**A intuição (sem fórmula).** Imagine que cada decisão tem um "preço médio de arrependimento":
+
+- se eu **aceito** o par e ele estava errado, pago o preço de um **falso positivo**;
+- se eu **rejeito** o par e ele estava certo, pago o preço de um **falso negativo**;
+- como não tenho certeza, multiplico cada preço pela **chance** de ele acontecer (é aí que entra
+  a probabilidade `p_cal`). A política escolhe a opção com o **menor preço médio**.
+
+E pedir revisão a um humano? Também tem um preço (o tempo da revisão) — mais o pouco de erro que
+ainda sobra mesmo depois de revisar. **Só vale a pena revisar quando isso sai mais barato do que
+decidir sozinho.** Esse "quanto eu economizo revisando" é o que chamamos de **valor da revisão**.
+
+> 🧒 **Em uma frase:** comparo o preço médio de cada escolha e fico com a mais barata; se chamar
+> um humano for ainda mais barato (e houver orçamento), eu chamo.
+
+<details>
+<summary>📐 Para quem quiser as fórmulas (opcional)</summary>
 
 Para cada par, usamos $p$ como a probabilidade calibrada de match (`p_cal`). A política compara
 três perdas esperadas (usamos $\ell$ para "loss"/perda):
@@ -1123,18 +1216,22 @@ Se $evr > 0$ e ainda houver orçamento de revisão, revisar reduz o custo espera
 pode ser `LLM_REVIEW`. Caso contrário, a ação fica com `base_choice`. Portanto,
 `action ∈ {MATCH, NONMATCH, LLM_REVIEW}`.
 
-Os dois modos mudam os custos e os limites de automação:
+</details>
+
+Os dois modos mudam os preços dos erros e o quanto a política exige para decidir sozinha:
 
 - **`vigilancia`**: $c_{fp}=10$, $c_{fn}=50$, `min_auto_match=0.85`,
-  `max_auto_nonmatch=0.15`, orçamento 2000. Prioriza **recall**: perder um match custa caro.
+  `max_auto_nonmatch=0.15`, orçamento 2000. Prioriza **recall** (não deixar match escapar):
+  perder um match custa caro.
 - **`confirmacao`**: $c_{fp}=100$, $c_{fn}=20$, `min_auto_match=0.95`,
-  `max_auto_nonmatch=0.10`, orçamento 1000. Prioriza **precisão**: confirmar um falso match custa caro.
+  `max_auto_nonmatch=0.10`, orçamento 1000. Prioriza **precisão** (ter certeza): confirmar um
+  falso match custa caro.
 """,
     ),
     (
         "md",
         """
-### T2.6.1 — Aplicar a política nos dois modos
+### 11.2 Aplicar a política nos dois modos
 
 **Objetivo de aprendizagem.** Executar a triagem real do pacote, mantendo os dois modos
 separados.
@@ -1181,7 +1278,7 @@ A política acrescenta colunas que explicam a decisão:
     (
         "md",
         """
-### T2.6.2 — Comparar a distribuição de ações
+### 11.3 Comparar a distribuição de ações
 
 **Objetivo de aprendizagem.** Quantificar como a assimetria de custos muda o volume de decisões.
 
@@ -1214,7 +1311,7 @@ dist_acoes""",
     (
         "md",
         """
-### T2.6.3 — Visualizar a distribuição por modo
+### 11.4 Visualizar a distribuição por modo
 
 **Objetivo de aprendizagem.** Ler rapidamente a diferença operacional entre os modos.
 
@@ -1343,9 +1440,13 @@ FASE_3_1 = [
         "md",
         """## 12. Reconciliação com `run_v3` (rota A, in-sample)
 
+> 🧒 **A ideia em uma frase.** Fizemos toda a conta "à mão", passo a passo. Agora conferimos se
+> ela bate **exatamente** com o resultado da "calculadora oficial" da biblioteca (`run_v3`). Se
+> bater, é prova de que entendemos o pipeline de verdade — e não só montamos algo parecido.
+
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **comparar** a rota manual com a função de produção `run_v3`, **verificar** igualdade coluna a coluna, **interpretar** o `RunSummary` e **distinguir** quando uma divergência é erro de implementação versus escolha metodológica.
 
-**Intuição.** O passo a passo manual que construímos nas Fases 7–11 deve reproduzir **exatamente** o que a função de produção `run_v3` faz quando usamos os mesmos parâmetros: ajuste Platt determinístico, configuração igual aos defaults da função e modo `vigilancia`.
+**Intuição.** O passo a passo manual que construímos nas seções 7 a 11 deve reproduzir **exatamente** o que a função de produção `run_v3` faz quando usamos os mesmos parâmetros: ajuste Platt determinístico, configuração igual aos defaults da função e modo `vigilancia`.
 
 Há duas rotas conceituais:
 
@@ -1428,6 +1529,11 @@ FASE_3_2 = [
     (
         "md",
         """## 13. Avaliação held-out (rota B)
+
+> 🧒 **A ideia em uma frase.** É o **boletim** do sistema: medimos quão bem ele acerta — mas de
+> forma **justa**, usando uma "prova de verdade" com pares que ele nunca viu. E, em vez de uma
+> prova só, aplicamos **várias** (sementes diferentes) e mostramos a média com **barras de erro**,
+> porque uma nota isolada pode ser sorte.
 
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **avaliar** métricas em teste held-out, **comparar** modos de triagem sob múltiplas sementes, **diagnosticar** vazamento por split ingênuo, **interpretar** curvas PR/ROC e **relacionar** limiares de política a custo esperado.
 
@@ -1687,6 +1793,11 @@ FASE_3_3 = [
     (
         "md",
         """## 14. Revisão LLM (stub determinístico)
+
+> 🧒 **A ideia em uma frase.** Os casos mais difíceis (a "zona cinzenta") não são decididos pela
+> máquina: eles são **mandados para um revisor** dar a palavra final. Aqui simulamos esse revisor
+> de um jeito controlado e offline, só para **medir o efeito** dele nas decisões — sem chamar
+> nenhuma inteligência artificial de verdade.
 
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **explicar** o papel da revisão clerical/LLM na zona cinzenta, **descrever** o protocolo `dual_agent_plus_arbiter`, **simular** a revisão de forma determinística e offline, e **medir** seu efeito sobre as decisões finais — sem confundir simulação com um LLM real.
 
