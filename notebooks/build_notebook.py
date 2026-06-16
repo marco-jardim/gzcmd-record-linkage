@@ -9,7 +9,7 @@ explicativo). Manter o ``.ipynb`` (JSON volumoso) à mão é frágil; descrevê-
 uma lista estruturada de células em Python torna o processo determinístico e
 fácil de revisar em *diffs*.
 
-O artefato versionado/entregue continua sendo o ``.ipynb`` — este script apenas o
+O artefato versionado/entregue continua sendo o ``.ipynb``. Este script apenas o
 (re)gera sem saídas. Para regenerar::
 
     python notebooks/build_notebook.py
@@ -38,7 +38,7 @@ BOOTSTRAP = """\
 # - No Google Colab (você abriu apenas o .ipynb, sem o repositório): clonamos o
 #   repositório e instalamos a biblioteca. Assim a lib `gzcmd_record_linkage`, os
 #   módulos do notebook (`synthetic_data`/`nb_helpers`) E os dados versionados
-#   (`data/synthetic/comparador_sintetico.csv`) ficam disponíveis — é isto que
+#   (`data/synthetic/comparador_sintetico.csv`) ficam disponíveis, é isto que
 #   evita a "pasta de dados vazia".
 import subprocess
 import sys
@@ -87,26 +87,30 @@ print(f"CSV versionado já presente: {_csv_versionado.exists()}")"""
 
 
 # ===========================================================================
-# FASE 2.1 — Estrutura, Narrativa e Setup
+# FASE 2.1: Estrutura, Narrativa e Setup
 # ===========================================================================
 FASE_2_1: list[tuple[str, str]] = [
     (
         "md",
         """\
-# GZ-CMD++ v3 — Passo a Passo sobre um Dataset Sintético
+# GZ-CMD++ v3: passo a passo sobre um dataset sintético
 
-> **Material didático (PT-BR)** para público técnico/acadêmico. Percorremos, estágio
-> por estágio, o motor de decisão **GZ-CMD++ v3** de *record linkage* (vinculação de
-> registros), usando um **dataset 100% sintético** gerado por código determinístico.
-> Nenhum dado real ou pessoal (PII) é utilizado.
+> **Material didático (PT-BR)** escrito para quem vem da saúde coletiva e da
+> epidemiologia. Se você já relacionou bases como SIM, SINAN ou SIH para encontrar o
+> mesmo indivíduo em fontes diferentes, você já fez *record linkage*, mesmo sem usar o
+> nome em inglês. Aqui percorremos, estágio por estágio, o motor de decisão
+> **GZ-CMD++ v3**, sempre sobre um **dataset 100% sintético** gerado por código
+> determinístico. Nenhum dado real ou pessoal é utilizado.
 
-Ao longo do notebook você verá, para cada estágio do pipeline:
+Vale fixar a imagem central desde já: este pareamento é como um `JOIN` de SQL em que a
+chave não é confiável. Em vez de casar `CPF = CPF`, precisamos decidir, sob incerteza,
+se dois registros são a mesma pessoa. Cada seção do notebook segue a mesma estrutura:
 
 1. **Objetivos de aprendizagem** ("ao final você será capaz de…");
-2. **Intuição antes do formalismo** — primeiro a pergunta de negócio, depois a matemática;
-3. Um **exemplo-fio-condutor** (um par "herói") seguido do início ao fim;
-4. **Código real** da biblioteca `gzcmd_record_linkage` (não reimplementações);
-5. Uma **visualização** com propósito e um **recap** ao fim da seção.
+2. **Intuição antes da fórmula**: primeiro a pergunta epidemiológica, depois a matemática;
+3. Um **exemplo-fio-condutor** (um par "herói") acompanhado do início ao fim;
+4. **Código real** da biblioteca `gzcmd_record_linkage`, não reimplementações;
+5. Uma **figura** com propósito e um **fechamento** ao fim da seção.
 
 ---
 
@@ -116,7 +120,7 @@ Ao longo do notebook você verá, para cada estágio do pipeline:
 |-------|-----------|
 | **Record linkage** | Decidir se dois registros (ex.: de bases distintas) referem-se à **mesma entidade** (pessoa). |
 | **Par comparador** | Uma dupla (registro de referência × registro candidato) com subscores de similaridade. |
-| **`nota_final`** | Escore agregado de similaridade do par (escala ~0–10) produzido pelo comparador OpenRecLink. |
+| **`nota_final`** | Escore agregado de similaridade do par (escala de 0 a 10) produzido pelo comparador OpenRecLink. |
 | **Banda** | Faixa discreta de `nota_final` (ex.: `grey_mid`) usada para perfis de erro e monitoramento. |
 | **Zona cinzenta** | Faixa intermediária de notas onde a decisão automática é arriscada. |
 | **Calibração** | Transformar um escore em **probabilidade** confiável de match (`p_cal` ∈ [0,1]). |
@@ -137,17 +141,20 @@ Ao longo do notebook você verá, para cada estágio do pipeline:
 - **identificar** a "zona cinzenta" e por que ela exige tratamento especial;
 - **descrever** em alto nível os cinco estágios do GZ-CMD++ v3.
 
-**Intuição.** Imagine duas bases de dados de saúde. Em uma, um registro diz
-*"Maria S. Souza, nascida em 12/03/1981"*; na outra, *"Maria Silva de Souza,
-12/03/1981"*. É a **mesma pessoa**? Provavelmente — mas e se a data fosse
-*13/03/1981*? Ou se o sobrenome fosse completamente diferente? Quando **não há
-CPF confiável** ligando os registros, precisamos **decidir sob incerteza** a partir
-de **subscores de similaridade** (nome, nome da mãe, data de nascimento, endereço…).
+**Intuição.** Imagine o relacionamento entre o SIM e uma base de casos. Em uma fonte,
+o registro diz *"Maria S. Souza, nascida em 12/03/1981"*; na outra, *"Maria Silva de
+Souza, 12/03/1981"*. É a mesma pessoa? Quase certamente. Mas e se a data fosse
+*13/03/1981*, sugerindo um erro de digitação? E se o sobrenome divergisse por completo?
+Sem um identificador único confiável ligando os registros, a decisão passa a ser
+probabilística, e a tomamos a partir de **subscores de similaridade**: nome, nome da
+mãe, data de nascimento, endereço.
 
-O comparador agrega esses subscores em uma **`nota_final`**. Notas muito altas são
-quase certamente *matches*; muito baixas, quase certamente não. O problema mora no
-**meio** — a **zona cinzenta** — onde aceitar ou rejeitar automaticamente custa caro
-(falsos positivos e falsos negativos têm consequências distintas).""",
+O comparador resume esses subscores em uma única **`nota_final`**. Notas muito altas
+quase sempre indicam o mesmo indivíduo; notas muito baixas, quase nunca. A dificuldade
+vive no **meio da escala**, na **zona cinzenta**, onde decidir no automático sai caro.
+E aqui já falamos a língua da epidemiologia: um falso positivo (unir duas pessoas
+distintas) e um falso negativo (deixar de unir a mesma pessoa) têm custos diferentes,
+exatamente como acontece num teste de rastreamento.""",
     ),
     (
         "md",
@@ -174,16 +181,19 @@ nas próximas seções, usando as funções reais da biblioteca:
                             por CUSTO ESPERADO                  [policy engine]
 ```
 
-Dois **modos** de operação calibram o apetite a risco:
+Dois **modos** de operação ajustam o apetite a risco, e a tradução para a clínica é
+direta:
 
-- **`vigilancia`** — prioriza *recall* (recuperar o máximo de óbitos/matches);
-- **`confirmacao`** — prioriza *precision* (listas de altíssima confiança).
+- **`vigilancia`** prioriza *recall*, que é a **sensibilidade** do rastreamento: recuperar o máximo de óbitos ou pares verdadeiros, aceitando alguns falsos positivos;
+- **`confirmacao`** prioriza *precision*, próximo do **valor preditivo positivo**: produzir listas de altíssima confiança, ao preço de deixar alguns verdadeiros de fora.
 
-> **Nota metodológica importante (será detalhada na seção de calibração):** a
-> ferramenta, em `run_v3`, calibra **in-sample** (ajusta e pontua nas mesmas linhas).
-> Isso é ótimo para *reproduzir* a ferramenta, mas **não** mede generalização. Por
-> isso adotaremos **duas rotas** explícitas: **(A) reprodução fiel** e
-> **(B) metodologia correta** (treino/teste *held-out*).""",
+> **Nota metodológica importante (retomada na seção de calibração).** Na função de alto
+> nível `run_v3`, a ferramenta calibra **in-sample**, ou seja, ajusta e pontua nas
+> mesmas linhas. É o equivalente a avaliar um modelo prognóstico na própria coorte de
+> derivação: serve para *reproduzir* a ferramenta, mas superestima o desempenho e não
+> mede generalização. Por isso seguimos **duas rotas** explícitas: **(A) reprodução
+> fiel** e **(B) metodologia correta**, com separação treino/teste (*held-out*), o
+> análogo de uma coorte de validação.""",
     ),
     (
         "md",
@@ -199,8 +209,9 @@ Ao final deste notebook, teremos demonstrado, com números e gráficos honestos:
 5. Como avaliar **generalização** corretamente (rota B, *held-out*, múltiplas seeds).
 
 > **Honestidade científica.** Como os dados são sintéticos, conhecemos a
-> **posterior verdadeira** `p*(x)` que gerou cada rótulo. Usaremos `p*` como
-> *ground-truth* para **provar** (não apenas ilustrar) que a calibração funciona.""",
+> **posterior verdadeira** `p*(x)` que gerou cada rótulo. Esse é um luxo que a vida
+> real não oferece: aqui ele funciona como a verdade-base que nos deixa **provar**, e
+> não apenas ilustrar, que a calibração de fato recupera as probabilidades corretas.""",
     ),
     (
         "md",
@@ -216,9 +227,9 @@ geramos o dataset sintético e o salvamos como CSV no formato que o `loader` esp
 > *bootstrap* abaixo detecta que o repositório não está presente, **clona-o** e
 > **instala a biblioteca** automaticamente. Com isso, a biblioteca
 > `gzcmd_record_linkage`, os módulos auxiliares do notebook e os **dados
-> versionados** ficam disponíveis — é o que evita a clássica "pasta de dados
-> vazia" quando se abre o `.ipynb` solto. Localmente (com o repositório já
-> clonado), a mesma célula apenas localiza a raiz do projeto e segue em frente.""",
+> versionados** ficam disponíveis. É esse passo que evita a clássica "pasta de dados
+> vazia" quando se abre o `.ipynb` solto. Localmente, com o repositório já clonado, a
+> mesma célula apenas localiza a raiz do projeto e segue em frente.""",
     ),
     ("code", BOOTSTRAP),
     (
@@ -251,10 +262,10 @@ rotulados** (match óbvio, não-match óbvio, homônimo, óbito-antes-do-diagnó
 nome-da-mãe-ausente, datas-invertidas e um caso clássico de zona cinzenta). O objeto
 retornado expõe:
 
-- `.frame` — o DataFrame no **schema cru** do comparador (entrada do pipeline);
-- `.p_true` — a **posterior verdadeira** `p*(x)` de cada par (coluna de **validação**,
+- `.frame`: o DataFrame no **schema cru** do comparador (entrada do pipeline);
+- `.p_true`: a **posterior verdadeira** `p*(x)` de cada par (coluna de **validação**,
   jamais consumida pelo pipeline);
-- `.meta` — metadados do gerador (seed, taxa de match, parâmetros da verdade-base).""",
+- `.meta`: metadados do gerador (seed, taxa de match, parâmetros da verdade-base).""",
     ),
     (
         "code",
@@ -307,16 +318,16 @@ df_raw[colunas_visao].head(8)""",
 | `COMPREC,C,12,0` / `REFREC,C,12,0` | IDs do registro **comparador** e de **referência** (formam o par). |
 | `PASSO` | Passo de *blocking* que originou o par. |
 | `PAR` | Rótulo: `1`/`2` = match, `0` = não-match (origem do `TARGET`). |
-| `nota final` | Escore agregado de similaridade (~0–10). É **o** observável que calibramos. |
+| `nota final` | Escore agregado de similaridade (de 0 a 10). É **o** observável que calibramos. |
 | `NOME *` | Subscores de similaridade do **nome** (frações de fragmentos iguais). |
 | `NOMEMAE *` | Subscores do **nome da mãe** (decisivos na zona cinzenta). |
 | `DTNASC *` | Comparações de **data de nascimento** (iguais, aproximadas, invertidas). |
 | `ENDERECO *` | Subscores de **endereço** (via, número, proximidade textual). |
 | `CODMUNRES local igual` | Indicador de **município de residência** coincidente. |
 | `R_DTNASC` / `C_DTNASC` | Datas de nascimento (YYYYMMDD) de cada registro. |
-| `R_DTOBITO` / `C_DTDIAG` | Data de **óbito** (ref.) e de **diagnóstico** (comp.) — usadas no guardrail temporal. |
+| `R_DTOBITO` / `C_DTDIAG` | Data de **óbito** (ref.) e de **diagnóstico** (comp.), usadas na checagem de plausibilidade temporal. |
 
-> A coluna de validação `p_true` **não** está no CSV de entrada — ela vive apenas no
+> A coluna de validação `p_true` **não** está no CSV de entrada, ela vive apenas no
 > objeto `dataset` para checarmos a calibração mais adiante.""",
     ),
     (
@@ -324,11 +335,13 @@ df_raw[colunas_visao].head(8)""",
         """\
 ## 6. Apresentando o "herói": nosso exemplo-fio-condutor
 
-**Intuição didática.** Para não nos perdermos em médias e agregados, vamos eleger
-**um par específico** e segui-lo em **todos** os estágios. Escolhemos o cenário
-`zona_cinzenta`: um par com `nota_final` no meio da escala — nem claramente match,
-nem claramente não-match. É exatamente o tipo de caso que o GZ-CMD++ v3 foi
-desenhado para tratar com cuidado (calibração + guardrails + triagem por custo).
+**Intuição didática.** Médias e agregados escondem o que acontece com o indivíduo, e é
+no indivíduo que mora a decisão. Por isso elegemos **um par específico** e o seguimos em
+**todos** os estágios, como se acompanhássemos um caso-índice ao longo de uma
+investigação. Escolhemos o cenário `zona_cinzenta`: um par com `nota_final` no meio da
+escala, nem claramente match, nem claramente não-match. É justamente o tipo de caso que
+o GZ-CMD++ v3 foi desenhado para tratar com cuidado, combinando calibração, guardrails e
+triagem por custo.
 
 A célula a seguir localiza o herói pelo mapa de cenários em `meta["scenarios"]` e
 mostra seu estado inicial. Voltaremos a este "card" a cada estágio.""",
@@ -366,7 +379,7 @@ elegemos um par **herói** para acompanhar. **A seguir:** carregar o CSV pelo
 
 
 # ===========================================================================
-# FASE 2.2 — Carga e Feature Engineering
+# FASE 2.2: Carga e Feature Engineering
 # ===========================================================================
 FASE_2_2: list[tuple[str, str]] = [
     (
@@ -391,7 +404,9 @@ de nome iguais, comparações de data, proximidade de endereço…). Trabalhar c
 eles, um a um, é inviável e ruidoso. O `loader` então **agrega** subscores correlatos
 em poucos escores por dimensão (nome, data, endereço, município), cria **flags**
 de ausência/risco e, opcionalmente, *features* **MACD** (interações entre nome
-perfeito e distância temporal). Esse é o material sobre o qual o resto do pipeline opera.
+perfeito e distância temporal). Quem modela em R reconhece o gesto: é a mesma higiene de
+construir variáveis derivadas e indicadores de ausência antes de ajustar um modelo. Esse
+é o material sobre o qual o resto do pipeline opera.
 
 **O que vamos fazer a seguir.** Carregar o CSV que salvamos com a função real
 `load_comparador_csv` e inspecionar cada grupo de colunas que ela engenheira.""",
@@ -452,7 +467,7 @@ risco (consumidas adiante pelos *guardrails*):
 | `diff_ano` | diferença absoluta de **ano** de nascimento entre os registros. |
 
 As colunas **MACD** (ativadas por `LoadConfig(macd_enabled=True)`) capturam
-**interações** — por exemplo, `macd_nome_perf_x_date_far` marca o caso perigoso de
+**interações**. Por exemplo, `macd_nome_perf_x_date_far` marca o caso perigoso de
 **nome perfeito porém datas distantes** (forte sinal de homonímia). A célula abaixo
 lista as colunas MACD presentes.""",
     ),
@@ -473,7 +488,7 @@ for c in macd_cols:
 ### 7.3 Visualização: distribuição da `nota_final` por classe
 
 **Pergunta que a figura responde:** *as notas separam perfeitamente matches de
-não-matches?* Se separassem, não haveria zona cinzenta — nem necessidade de
+não-matches?* Se separassem, não haveria zona cinzenta, nem necessidade de
 calibração ou de revisão. Esperamos ver **sobreposição** na faixa intermediária:
 é exatamente onde a decisão é difícil (e onde o dataset sintético foi desenhado para
 ter ambiguidade real, evitando circularidade).""",
@@ -501,7 +516,7 @@ ax.hist(
 )
 ax.set_xlabel("nota_final (escore agregado de similaridade)")
 ax.set_ylabel("frequência (nº de pares)")
-ax.set_title("Distribuição da nota_final por classe — note a sobreposição na zona cinzenta")
+ax.set_title("Distribuição da nota_final por classe: a sobreposição na zona cinzenta")
 ax.legend()
 fig.tight_layout()
 plt.show()""",
@@ -512,7 +527,7 @@ plt.show()""",
 ### 7.4 O herói após a *feature engineering*
 
 Reencontramos nosso par **herói** (`zona_cinzenta`), agora com as colunas
-engenheiradas. Repare na `nota_final` intermediária e nos escores parciais — é um
+engenheiradas. Repare na `nota_final` intermediária e nos escores parciais: é um
 caso genuinamente ambíguo.""",
     ),
     (
@@ -538,7 +553,7 @@ card_heroi(
         """\
 **Recap da seção.** Carregamos o CSV com o `loader` real e vimos como ele transforma
 dezenas de subscores crus em **agregados** [0,1], **flags** de risco e *features*
-**MACD**. A figura confirmou a **sobreposição** das classes na zona cinzenta — a
+**MACD**. A figura confirmou a **sobreposição** das classes na zona cinzenta, a
 razão de ser de todo o pipeline. **A seguir:** transformar a `nota_final` contínua
 em **bandas** discretas com o `BandAssigner`.""",
     ),
@@ -546,7 +561,7 @@ em **bandas** discretas com o `BandAssigner`.""",
 
 
 # ===========================================================================
-# FASE 2.3 — Atribuição de Bandas
+# FASE 2.3: Atribuição de Bandas
 # ===========================================================================
 FASE_2_3: list[tuple[str, str]] = [
     (
@@ -556,8 +571,8 @@ FASE_2_3: list[tuple[str, str]] = [
 
 > 🧒 **A ideia em uma frase.** É como transformar a nota de uma prova em **conceitos**
 > (A, B, C, D…): em vez do número solto "7,3", dizemos "este par está na faixa
-> `grey_high`". As faixas do **meio** (as `grey_*`) são a famosa **zona cinzenta** —
-> nem claramente "sim", nem claramente "não" —, e é nelas que mora toda a dificuldade.
+> `grey_high`". As faixas do **meio** (as `grey_*`) são a famosa **zona cinzenta**,
+> nem claramente "sim", nem claramente "não", e é nelas que mora toda a dificuldade.
 
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
@@ -567,11 +582,13 @@ FASE_2_3: list[tuple[str, str]] = [
 
 **Intuição.** A `nota_final` é um número contínuo, mas a operação precisa de
 **categorias acionáveis**: "isto é claramente alto", "isto está no meio", "isto é
-baixo". As **bandas** fazem esse recorte. Elas servem a três propósitos no
-GZ-CMD++ v3: (1) perfis de **erro do revisor LLM** por banda, (2) **monitoramento de
-drift** por fatia e (3) leitura humana rápida. As bandas `grey_low`, `grey_mid` e
-`grey_high` isolam justamente a **zona cinzenta** — onde a decisão automática é
-arriscada e a calibração/triagem ganham importância.
+baixo". É o mesmo gesto de estratificar uma variável contínua em faixas, como quando se
+agrupam pressão arterial ou escore de risco cardiovascular em estratos interpretáveis.
+As **bandas** fazem esse recorte e servem a três propósitos no GZ-CMD++ v3: (1) perfis
+de **erro do revisor LLM** por banda, (2) **monitoramento de drift** por fatia e (3)
+leitura humana rápida. As bandas `grey_low`, `grey_mid` e `grey_high` isolam justamente a
+**zona cinzenta**, onde a decisão automática é arriscada e a calibração e a triagem
+ganham importância.
 
 **O que vamos fazer a seguir.** Carregar a **configuração real** da biblioteca
 (o mesmo `gzcmd_v3_config.yaml` que `run_v3` usa), instanciar o `BandAssigner` a
@@ -600,7 +617,7 @@ print(df["band"].value_counts().reindex(ordem_bandas, fill_value=0).astype(int))
         """\
 ### 8.1 As fronteiras das bandas (lidas da configuração)
 
-A tabela abaixo é construída **diretamente** a partir de `cfg.bands.definitions` —
+A tabela abaixo é construída **diretamente** a partir de `cfg.bands.definitions`,
 ou seja, reflete fielmente o que o código usa. A semântica de cada faixa é
 `min <= nota < max` (limite superior **exclusivo**), **exceto** a banda `high`, cujo
 `inclusive_max=True` a torna `min <= nota <= max`. Notas fora de todas as faixas
@@ -630,7 +647,7 @@ fronteiras""",
 **Pergunta que a figura responde:** *como as fronteiras recortam a distribuição de
 notas?* Cada barra do histograma é colorida pela banda do seu intervalo. Repare como
 as três bandas cinzentas (`grey_low`/`grey_mid`/`grey_high`) cobrem exatamente a
-região central — a zona cinzenta que motivou todo o pipeline.""",
+região central, a zona cinzenta que motivou todo o pipeline.""",
     ),
     (
         "code",
@@ -670,7 +687,7 @@ plt.show()""",
 ### 8.3 O herói recebe sua banda
 
 Nosso par **herói** (`zona_cinzenta`) agora carrega uma banda. Como esperado para um
-caso ambíguo, ele cai numa das faixas `grey_*` — o território onde a decisão exige
+caso ambíguo, ele cai numa das faixas `grey_*`, o território onde a decisão exige
 calibração honesta e, possivelmente, revisão.""",
     ),
     (
@@ -685,14 +702,14 @@ card_heroi(df, hero_idx, ["nota_final", "TARGET", "band"])""",
 `BandAssigner` (limite superior exclusivo, exceto `high`) e visualizamos como as
 fronteiras recortam a distribuição. As bandas `grey_*` materializam a **zona de
 incerteza**. **A seguir:** transformar a `nota_final` em uma **probabilidade
-calibrada** `p_cal` e — criticamente — medir a qualidade dessa calibração **sem
+calibrada** `p_cal` e, criticamente, medir a qualidade dessa calibração **sem
 vazamento** (rotas A e B).""",
     ),
 ]
 
 
 # ===========================================================================
-# FASE 2.4 — Calibração (Platt): rotas A (in-sample) e B (held-out)
+# FASE 2.4: Calibração (Platt), rotas A (in-sample) e B (held-out)
 # ===========================================================================
 FASE_2_4: list[tuple[str, str]] = [
     (
@@ -711,11 +728,14 @@ como a **nota de uma prova**; o que de fato queremos é a **chance real de passa
 A *calibração* é exatamente o que converte uma coisa na outra: produz `p_cal ∈ [0, 1]`,
 a probabilidade sobre a qual a política de custo (seção 11) vai decidir. Com ela
 podemos afirmar, sem enganar ninguém, "este par tem 92% de chance de ser a mesma pessoa".
+Quem trabalha com **escores de risco clínico** conhece a exigência: um escore só é
+calibrado quando, entre os pacientes a quem ele atribui risco de 10%, cerca de 10% de
+fato adoecem. É a velha *calibration-in-the-large*, agora aplicada a pares de registros.
 
 **Objetivos de aprendizagem.** Ao final desta seção você será capaz de:
 
 - **explicar** o que é uma probabilidade *calibrada* e por que a `nota_final` crua **não** é uma;
-- **entender** a ideia do *Platt scaling* (o "botão" que vira nota em probabilidade) — com a matemática disponível, mas opcional;
+- **entender** a ideia do *Platt scaling* (o "botão" que vira nota em probabilidade), com a matemática disponível, mas opcional;
 - **distinguir** "treinar e testar no mesmo lugar" (rota A) de "testar com dados novos" (rota B);
 - **ler** o boletim de calibração (*reliability diagram*) e os números **ECE** e **Brier**;
 - **conferir** se o modelo recuperou a verdade que só nós, criadores do mundo sintético, conhecemos (`p*`).""",
@@ -729,18 +749,20 @@ podemos afirmar, sem enganar ninguém, "este par tem 92% de chance de ser a mesm
 *dimmer* de luz) que pega o placar cru e o **entorta suavemente** até virar uma
 probabilidade entre 0 e 1. Esse botão tem só **dois parafusos** de ajuste:
 
-- **inclinação (`a`):** quão **rápido** a probabilidade sobe quando a nota aumenta —
-  é a "sensibilidade" do botão. Inclinação alta = transição abrupta de "não" para "sim".
-- **deslocamento (`b`):** **onde** fica o ponto de "50% de chance" — a *nota de
+- **inclinação (`a`):** quão **rápido** a probabilidade sobe quando a nota aumenta,
+  a "sensibilidade" do botão. Inclinação alta significa transição abrupta de "não" para "sim".
+- **deslocamento (`b`):** **onde** fica o ponto de "50% de chance", a *nota de
   indiferença*. Acima dela, o sistema começa a apostar em match.
 
 A máquina **aprende sozinha** o melhor ajuste desses dois parafusos olhando exemplos
-já rotulados. E faz isso de forma **determinística**: mesma entrada → mesma saída,
-sem nenhum sorteio. Guarde esse detalhe — ele é o que permite, na seção 12, reproduzir
-a ferramenta oficial *no bit*.
+já rotulados. Quem usa R já fez isso sem dar nome: trata-se de uma **regressão logística
+de uma única variável**, `glm(TARGET ~ nota_final, family = binomial)`, em que `a` é o
+coeficiente da nota e `b` é o intercepto. E o ajuste é **determinístico**: a mesma
+entrada produz sempre a mesma saída, sem nenhum sorteio. Guarde esse detalhe, pois é o
+que permite, na seção 12, reproduzir a ferramenta oficial *no bit*.
 
 <details>
-<summary>📐 Para quem quiser a matemática (opcional — pode pular sem perder o fio)</summary>
+<summary>📐 Para quem quiser a matemática (opcional, pode pular sem perder o fio)</summary>
 
 Seja $s$ a `nota_final` de um par e $y \in \{0,1\}$ o rótulo verdadeiro (1 = match).
 O Platt modela a probabilidade de match como uma **regressão logística 1-D** sobre o
@@ -757,7 +779,7 @@ Estimamos $(a, b)$ minimizando a **log-verossimilhança negativa** (NLL) com
 
 $$ \mathcal{L}(a,b) = -\sum_{i} \Big[ y_i \log p(s_i) + (1-y_i)\log\big(1-p(s_i)\big) \Big] \;+\; \tfrac{1}{2}\,\lambda\, a^2. $$
 
-A biblioteca resolve por **Newton–Raphson** (atualização $w \leftarrow w - H^{-1}g$,
+A biblioteca resolve por **Newton-Raphson** (atualização $w \leftarrow w - H^{-1}g$,
 com $g$ o gradiente e $H$ a Hessiana 2×2), inicializando $b$ no *log-odds* da taxa de
 base e $a=0$. Penalizar só $a$ evita curvas absurdamente íngremes quando há poucos
 dados, enquanto deixar $b$ livre preserva a capacidade de acertar a **prevalência**
@@ -768,17 +790,18 @@ dados, enquanto deixar $b$ livre preserva a capacidade de acertar a **prevalênc
     (
         "md",
         """\
-### 9.2 Rota A — reprodução fiel da ferramenta (treina e testa no mesmo lugar)
+### 9.2 Rota A: reprodução fiel da ferramenta (treina e testa no mesmo lugar)
 
 **Analogia.** Imagine estudar para uma prova **com o gabarito na mão** e depois "se
 testar" exatamente nas **mesmas questões**, ainda com o gabarito do lado. Sua nota
-sai ótima — mas isso **não prova** que você aprendeu. A rota A faz isso: ajusta o
-botão e mede o acerto **nas mesmas linhas**.
+sai ótima, mas isso **não prova** que você aprendeu. Na epidemiologia isso tem nome: é
+o **otimismo** de avaliar um modelo na própria **coorte de derivação**. A rota A faz
+exatamente isso: ajusta o botão e mede o acerto **nas mesmas linhas**.
 
 **Por que então fazê-la?** Porque é exatamente o que a ferramenta oficial
 `run_v3(p_cal="fit_platt")` faz por dentro. Reproduzi-la fielmente nos permite, na
 seção 12, provar que entendemos a ferramenta. Só não vale usá-la para dizer se o
-sistema **generaliza** — a armadilha está logo abaixo.
+sistema **generaliza**. A armadilha está logo abaixo.
 
 **O que vamos fazer a seguir.** Ajustar o Platt em **todas** as linhas e pontuar
 **essas mesmas linhas**.""",
@@ -797,38 +820,43 @@ print(f"  inclinação a (slope)... = {platt_insample.slope:.4f}")
 print(f"  viés b (intercept)..... = {platt_insample.intercept:.4f}")
 print(f"  nota de indiferença s* = -b/a = {-platt_insample.intercept / platt_insample.slope:.3f}")
 print(f"\\nVerdade-base do gerador: a*={meta['true_slope']:.4f}, b*={meta['true_intercept']:.4f}")
-print(f"p_cal (in-sample) — min={df['p_cal'].min():.4f}, max={df['p_cal'].max():.4f}")""",
+print(f"p_cal (in-sample): min={df['p_cal'].min():.4f}, max={df['p_cal'].max():.4f}")""",
     ),
     (
         "md",
         """\
 > ⚠️ **Por que a rota A engana.** Como o botão foi ajustado **vendo os mesmos
 > rótulos** que usamos depois para medir o acerto, qualquer boletim feito aqui sai
-> "bonito demais" — o modelo "já viu" cada resposta (isso se chama *vazamento*). Para
+> "bonito demais", porque o modelo "já viu" cada resposta (isso se chama *vazamento*). Para
 > medir de verdade, precisamos avaliá-lo em dados que ele **nunca viu**. É a rota B.""",
     ),
     (
         "md",
         """\
-### 9.3 Rota B — o jeito honesto (testar com questões novas)
+### 9.3 Rota B: o jeito honesto (testar com questões novas)
 
 **Analogia.** Agora a prova **de verdade**: estudamos com um conjunto de exemplos
 (o **treino**) e somos avaliados em **questões que nunca vimos** (o **teste**). Só
-assim descobrimos se realmente aprendemos — ou se só decoramos o gabarito.
+assim descobrimos se realmente aprendemos, ou se só decoramos o gabarito.
 
 **Um cuidado extra: não deixar "cola" passar.** Em vinculação de registros, o mesmo
 registro pode aparecer em vários pares. Se um pedaço dele caísse no treino e outro no
 teste, seria como ver uma questão da prova durante o estudo. Para impedir isso,
 separamos **por registro** (`COMPREC`): todas as linhas de um mesmo registro vão para
-o **mesmo lado**. É o que chamamos de divisão *group-aware*.
+o **mesmo lado**. É o que chamamos de divisão *group-aware*, a mesma preocupação com a
+**não-independência** entre observações (pacientes de um mesmo hospital ou município)
+que justifica análises por **cluster**.
 
 **Duas notas de honestidade (que o código abaixo imprime).** Vamos resumir a
 calibração em dois números:
 
-- **ECE** — a **distância média entre o que o modelo promete e o que de fato acontece**.
-  Se ele diz "70%" e acerta ~70%, a distância é zero. Quanto **menor**, mais honesto.
-- **Brier** — uma espécie de **"tacada de golfe" das probabilidades**: pune previsões
-  ao mesmo tempo **confiantes e erradas**. Quanto **menor**, melhor.
+- **ECE** (*expected calibration error*): a **distância média entre o que o modelo
+  promete e o que de fato acontece**. Se ele diz "70%" e acerta ~70%, a distância é zero.
+  Quanto **menor**, mais honesto. É o espírito do gráfico de calibração por decis de um
+  Hosmer-Lemeshow, resumido em um único número.
+- **Brier**: o **score de Brier** que já aparece em modelos prognósticos, uma espécie
+  de **"tacada de golfe" das probabilidades**, pois pune previsões ao mesmo tempo
+  **confiantes e erradas**. Quanto **menor**, melhor.
 
 **O que vamos fazer a seguir.** Ajustar o Platt **só no treino** e pontuar **só no
 teste**; toda métrica de calibração honesta vem daqui.""",
@@ -899,7 +927,7 @@ ax.plot([0, 1], [0, 1], "--", color="gray", label="calibração perfeita")
 ax.scatter(conf, acc, s=wt * 3, color="#C44E52", alpha=0.8, label="bins (área ∝ nº de pares)")
 ax.set_xlabel("confiança média prevista (p_cal)")
 ax.set_ylabel("fração empírica de matches (acurácia)")
-ax.set_title(f"Reliability diagram — teste held-out\\nECE={ece_holdout:.3f} | Brier={brier_holdout:.3f}")
+ax.set_title(f"Reliability diagram (teste held-out)\\nECE={ece_holdout:.3f} | Brier={brier_holdout:.3f}")
 ax.set_xlim(-0.02, 1.02)
 ax.set_ylim(-0.02, 1.02)
 ax.legend(loc="upper left")
@@ -915,13 +943,13 @@ plt.show()""",
 que na vida real é **impossível** ter: a **chance verdadeira** de cada par ser a mesma
 pessoa (`p*`). É como ser o autor de um jogo de adivinhação e já conhecer a resposta.
 Então fazemos a pergunta decisiva: *o modelo, sem nunca ter visto esse segredo,
-conseguiu redescobrir essas chances?* Se as bolinhas seguem a diagonal, sim — e isso
-é **prova**, não sorte.
+conseguiu redescobrir essas chances?* Se as bolinhas seguem a diagonal, a resposta é
+sim, e isso é **prova**, não sorte.
 
 > **Por que isso não é "trapaça".** A chance verdadeira `p*` foi definida **antes** de
 > sortear os rótulos (`TARGET ~ Bernoulli(p*)`) e **nunca** entrou no pipeline. O
 > modelo só viu as notas e os rótulos; recuperar `p*` é, portanto, mérito genuíno da
-> calibração — não um truque circular.""",
+> calibração, não um truque circular.""",
     ),
     (
         "code",
@@ -942,7 +970,7 @@ fig.tight_layout()
 plt.show()
 
 print(f"Erro absoluto médio entre p_cal (held-out) e a verdade p*: {mae_vs_ptrue:.4f}")
-print("Interpretação: valores pequenos (~0.01–0.03) provam recuperação da verdade-base.")""",
+print("Interpretação: valores pequenos (~0.01 a 0.03) provam recuperação da verdade-base.")""",
     ),
     (
         "md",
@@ -950,7 +978,7 @@ print("Interpretação: valores pequenos (~0.01–0.03) provam recuperação da 
 ### 9.6 O manual de desejos × o que o código faz hoje
 
 **Em linguagem simples.** O arquivo de configuração (`gzcmd_v3_config.yaml`) é como
-uma **lista de desejos** do projeto: ele descreve uma calibração mais sofisticada —
+uma **lista de desejos** do projeto: ele descreve uma calibração mais sofisticada,
 um botão Platt **por banda**, ancorado (`method: anchor_platt`, `by_band: true`). Mas
 o código **realmente executado hoje** por `run_v3` faz um Platt **global**, mais
 simples (`fit_platt_from_df`), sem âncoras e sem separar por banda.
@@ -958,7 +986,7 @@ simples (`fit_platt_from_df`), sem âncoras e sem separar por banda.
 Tratamos isso com honestidade: **este notebook ensina o que o código faz** (Platt
 global). A lista de desejos vale como **intenção de projeto**, não como o
 comportamento atual. Mostrar a config como se já fosse a implementação seria enganar
-o leitor — e parte do rigor é justamente apontar essa diferença.""",
+o leitor, e parte do rigor é justamente apontar essa diferença.""",
     ),
     (
         "md",
@@ -982,7 +1010,7 @@ fixa.""",
 
 Nosso par **herói** (`zona_cinzenta`) agora tem um `p_cal` (mostramos o da rota A,
 que cobre todas as linhas). Como esperado para um caso ambíguo, sua probabilidade
-**não** é próxima de 0 nem de 1 — fica no meio, sinalizando que a decisão automática
+**não** é próxima de 0 nem de 1, fica no meio, sinalizando que a decisão automática
 é arriscada e que guardrails/triagem (próximas seções) serão decisivos.""",
     ),
     (
@@ -996,16 +1024,16 @@ card_heroi(df, hero_idx, ["nota_final", "TARGET", "band", "p_cal"])""",
 **Recap da seção (sem jargão).** Aprendemos a virar **placar** em **probabilidade
 honesta** com o "botão" Platt. Vimos por que treinar e testar no mesmo lugar (rota A)
 **engana**, e por que testar com dados novos (rota B) é o jeito **honesto**. Lemos o
-**boletim** de calibração e dois números — **ECE** (distância média entre promessa e
+**boletim** de calibração e dois números: **ECE** (distância média entre promessa e
 realidade) e **Brier** (a "tacada de golfe" das probabilidades). E, como criadores do
 mundo sintético, **conferimos** que o modelo redescobriu a chance verdadeira `p*`.
-**A seguir:** as regras de segurança que mandam mais que tudo — os **guardrails**.""",
+**A seguir:** as regras de segurança que mandam mais que tudo, os **guardrails**.""",
     ),
 ]
 
 
 # ===========================================================================
-# FASE 2.5 — Guardrails determinísticos
+# FASE 2.5: Guardrails determinísticos
 # ===========================================================================
 FASE_2_5: list[tuple[str, str]] = [
     (
@@ -1014,7 +1042,7 @@ FASE_2_5: list[tuple[str, str]] = [
 ## 10. Guardrails
 
 > 🧒 **A ideia em uma frase.** Guardrails são **regras de segurança que mandam mais
-> que tudo** — como o aviso "se a pessoa morreu *antes* do diagnóstico, não pode ser a
+> que tudo**, como o aviso "se a pessoa morreu *antes* do diagnóstico, não pode ser a
 > mesma pessoa". São poucas regras simples e inegociáveis que pegam os casos óbvios
 > (e os perigosos) **antes** de qualquer cálculo de custo, evitando erros graves.
 
@@ -1028,8 +1056,11 @@ FASE_2_5: list[tuple[str, str]] = [
 **Intuição.** Guardrails são **regras determinísticas de segurança** aplicadas
 **ANTES** da política de custo. Eles não tentam otimizar o custo médio; tentam evitar
 erros catastróficos e casos estruturalmente perigosos: datas impossíveis, notas
-extremamente baixas/altas e homonímia forte. Só depois desse filtro a triagem decide
-por custo esperado entre `MATCH`, `NONMATCH` e `LLM_REVIEW`.""",
+extremamente baixas/altas e homonímia forte. Quem trabalha com sistemas de informação
+em saúde reconhece nelas as regras de edição e consistência (uma data de óbito anterior
+ao diagnóstico é logicamente impossível, então o par não pode ser a mesma pessoa). Só
+depois desse filtro a triagem decide por custo esperado entre `MATCH`, `NONMATCH` e
+`LLM_REVIEW`.""",
     ),
     (
         "md",
@@ -1143,7 +1174,7 @@ FASE_2_6: list[tuple[str, str]] = [
 > **chamar um humano** para olhar (`LLM_REVIEW`). Não é um simples "passou de 0,5?".
 
 **Analogia.** É como um seguro. Aceitar um par errado e rejeitar um par certo têm "preços"
-diferentes — e esses preços mudam conforme o objetivo. Quando o erro é caro e a dúvida é grande,
+diferentes, e esses preços mudam conforme o objetivo. Quando o erro é caro e a dúvida é grande,
 muitas vezes compensa pagar o "preço pequeno" de pedir uma segunda opinião antes de decidir.
 
 ### Objetivos de aprendizagem
@@ -1180,7 +1211,7 @@ uma revisão adicional pode ter valor econômico.
 - como não tenho certeza, multiplico cada preço pela **chance** de ele acontecer (é aí que entra
   a probabilidade `p_cal`). A política escolhe a opção com o **menor preço médio**.
 
-E pedir revisão a um humano? Também tem um preço (o tempo da revisão) — mais o pouco de erro que
+E pedir revisão a um humano? Também tem um preço (o tempo da revisão), mais o pouco de erro que
 ainda sobra mesmo depois de revisar. **Só vale a pena revisar quando isso sai mais barato do que
 decidir sozinho.** Esse "quanto eu economizo revisando" é o que chamamos de **valor da revisão**.
 
@@ -1442,7 +1473,7 @@ FASE_3_1 = [
 
 > 🧒 **A ideia em uma frase.** Fizemos toda a conta "à mão", passo a passo. Agora conferimos se
 > ela bate **exatamente** com o resultado da "calculadora oficial" da biblioteca (`run_v3`). Se
-> bater, é prova de que entendemos o pipeline de verdade — e não só montamos algo parecido.
+> bater, é prova de que entendemos o pipeline de verdade, e não apenas montamos algo parecido.
 
 **Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **comparar** a rota manual com a função de produção `run_v3`, **verificar** igualdade coluna a coluna, **interpretar** o `RunSummary` e **distinguir** quando uma divergência é erro de implementação versus escolha metodológica.
 
@@ -1530,7 +1561,7 @@ FASE_3_2 = [
         "md",
         """## 13. Avaliação held-out (rota B)
 
-> 🧒 **A ideia em uma frase.** É o **boletim** do sistema: medimos quão bem ele acerta — mas de
+> 🧒 **A ideia em uma frase.** É o **boletim** do sistema: medimos quão bem ele acerta, mas de
 > forma **justa**, usando uma "prova de verdade" com pares que ele nunca viu. E, em vez de uma
 > prova só, aplicamos **várias** (sementes diferentes) e mostramos a média com **barras de erro**,
 > porque uma nota isolada pode ser sorte.
@@ -1624,7 +1655,7 @@ plt.show()""",
 
 Agora isolamos o modo `vigilancia` para manter o tempo de execução baixo e mudamos apenas a estratégia de split. O split `row` sorteia linhas independentemente; quando o **mesmo registro** (`COMPREC` ou `REFREC`) aparece em vários pares, ele pode cair em treino **e** em teste, gerando *vazamento por registro compartilhado* e métricas otimistas. Splits por `COMPREC`/`REFREC` mantêm grupos inteiros de um único lado do corte e evitam isso.
 
-**Expectativa honesta para ESTE dataset.** A magnitude do vazamento depende de quão repetidos são os registros. No nosso gerador sintético a maioria dos `COMPREC`/`REFREC` é **única** (grupos de tamanho 1), então os três splits tendem a produzir métricas **quase idênticas** — o efeito aqui é pequeno por construção. A célula a seguir primeiro mede a multiplicidade dos grupos e depois compara a média do Fβ automático, recall e cobertura por tipo de split, para que o leitor julgue o efeito pelos números, não pela retórica.""",
+**Expectativa honesta para ESTE dataset.** A magnitude do vazamento depende de quão repetidos são os registros. No nosso gerador sintético a maioria dos `COMPREC`/`REFREC` é **única** (grupos de tamanho 1), então os três splits tendem a produzir métricas **quase idênticas**, e o efeito aqui é pequeno por construção. A célula a seguir primeiro mede a multiplicidade dos grupos e depois compara a média do Fβ automático, recall e cobertura por tipo de split, para que o leitor julgue o efeito pelos números, não pela retórica.""",
     ),
     (
         "code",
@@ -1666,11 +1697,11 @@ leakage_summary""",
         "md",
         """**Lendo a tabela com honestidade.** Como antecipado, neste dataset sintético as três
 estratégias entregam Fβ/recall/cobertura **praticamente iguais** (diferenças na casa do
-milésimo) — coerente com a alta fração de grupos de tamanho 1 medida acima. Ou seja: aqui
+milésimo), coerente com a alta fração de grupos de tamanho 1 medida acima. Ou seja: aqui
 o split `row` **não** infla materialmente as métricas, porque quase não há registro
 compartilhado para vazar.
 
-Isso **não** enfraquece a regra metodológica — apenas a contextualiza. Em dados reais de
+Isso **não** enfraquece a regra metodológica, apenas a contextualiza. Em dados reais de
 *record linkage*, um mesmo indivíduo costuma participar de **muitos** pares candidatos
 (blocking gera dezenas de comparações por registro). Nesse cenário o split `row` mistura o
 mesmo registro entre treino e teste e **infla** o desempenho aparente; por isso a avaliação
@@ -1755,9 +1786,9 @@ best_cost = cost_df.loc[cost_df.groupby("mode")["total_cost"].idxmin()].copy()
 
 fig, ax = plt.subplots(figsize=(9, 5))
 for mode, group in cost_df.groupby("mode"):
-    ax.plot(group["tau"], group["total_cost"], label=f"custo — {mode}")
+    ax.plot(group["tau"], group["total_cost"], label=f"custo ({mode})")
     policy_tau = mode_costs_32[mode]["min_auto_match"]
-    ax.axvline(policy_tau, linestyle="--", alpha=0.65, label=f"limiar política — {mode}: {policy_tau:.2f}")
+    ax.axvline(policy_tau, linestyle="--", alpha=0.65, label=f"limiar política ({mode}): {policy_tau:.2f}")
     best_row = best_cost.loc[best_cost["mode"] == mode].iloc[0]
     ax.scatter(best_row["tau"], best_row["total_cost"], s=55)
     ax.annotate(
@@ -1782,7 +1813,7 @@ best_cost[["mode", "tau", "fp", "fn", "total_cost"]]""",
 
 O trade-off central é **precisão × recall × cobertura**. Em `vigilancia`, o custo de falso negativo é maior; por isso, esperamos uma política mais tolerante a revisar ou aceitar candidatos para proteger recall. Em `confirmacao`, falso positivo custa mais; a política tende a exigir evidência mais forte antes de auto-confirmar `MATCH`, o que pode reduzir cobertura ou recall automático.
 
-A prevalência também importa. Quando a taxa-base de `MATCH` é baixa, pequenas mudanças em FP afetam muito a precisão; quando há poucos positivos, o recall fica sensível a poucos FN. Por isso a calibração Platt e o ponto de operação devem ser lidos junto com prevalência, matriz de custos e cobertura automática — não como métricas isoladas.
+A prevalência também importa. Quando a taxa-base de `MATCH` é baixa, pequenas mudanças em FP afetam muito a precisão; quando há poucos positivos, o recall fica sensível a poucos FN. Por isso a calibração Platt e o ponto de operação devem ser lidos junto com prevalência, matriz de custos e cobertura automática, e não como métricas isoladas.
 
 **Recap.** Avaliamos a rota B em múltiplas sementes, vimos por que split por linha pode inflar métricas, interpretamos PR/ROC e conectamos limiares a custo esperado. **O que vem a seguir:** a seguir, entraremos no stub de LLM para estudar como a revisão assistida pode atuar sobre os casos `LLM_REVIEW` sem contaminar a avaliação held-out.""",
     ),
@@ -1796,22 +1827,22 @@ FASE_3_3 = [
 
 > 🧒 **A ideia em uma frase.** Os casos mais difíceis (a "zona cinzenta") não são decididos pela
 > máquina: eles são **mandados para um revisor** dar a palavra final. Aqui simulamos esse revisor
-> de um jeito controlado e offline, só para **medir o efeito** dele nas decisões — sem chamar
+> de um jeito controlado e offline, só para **medir o efeito** dele nas decisões, sem chamar
 > nenhuma inteligência artificial de verdade.
 
-**Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **explicar** o papel da revisão clerical/LLM na zona cinzenta, **descrever** o protocolo `dual_agent_plus_arbiter`, **simular** a revisão de forma determinística e offline, e **medir** seu efeito sobre as decisões finais — sem confundir simulação com um LLM real.
+**Objetivos de aprendizagem.** Ao final desta seção, você deve conseguir **explicar** o papel da revisão clerical/LLM na zona cinzenta, **descrever** o protocolo `dual_agent_plus_arbiter`, **simular** a revisão de forma determinística e offline, e **medir** seu efeito sobre as decisões finais, sem confundir simulação com um LLM real.
 
-**Intuição.** A política de triagem não decide tudo sozinha: os pares mais ambíguos saem como `LLM_REVIEW` para inspeção assistida. Numa operação real, um modelo de linguagem (ou um par de revisores humanos) examinaria o dossiê de cada par e devolveria `MATCH`/`NONMATCH`. Aqui **não chamamos nenhuma API** — isso quebraria a reprodutibilidade e exigiria rede na apresentação.
+**Intuição.** A política de triagem não decide tudo sozinha: os pares mais ambíguos saem como `LLM_REVIEW` para inspeção assistida. Numa operação real, um modelo de linguagem (ou um par de revisores humanos) examinaria o dossiê de cada par e devolveria `MATCH`/`NONMATCH`. Aqui **não chamamos nenhuma API**, pois isso quebraria a reprodutibilidade e exigiria rede na apresentação.
 
 **O protocolo `dual_agent_plus_arbiter` (conceitual).** A config descreve um protocolo de consenso: dois agentes (A e B) revisam o mesmo dossiê de forma independente; se concordam, a decisão é aceita; se discordam, um terceiro agente **árbitro** desempata. A ideia espelha o esquema "2 revisores + consenso" e reduz a variância de um único revisor.
 
-> **Honestidade científica.** O que usamos abaixo é um **stub de simulação**, não um LLM. O stub "enxerga" o rótulo verdadeiro (`TARGET`) e devolve a decisão correta na maioria das vezes, **errando com as taxas por banda da própria config** (`e_fp`/`e_fn`). Serve para demonstrar, de forma determinística, o *efeito* da revisão sobre as métricas — jamais para afirmar desempenho de um LLM real.""",
+> **Honestidade científica.** O que usamos abaixo é um **stub de simulação**, não um LLM. O stub "enxerga" o rótulo verdadeiro (`TARGET`) e devolve a decisão correta na maioria das vezes, **errando com as taxas por banda da própria config** (`e_fp`/`e_fn`). Serve para demonstrar, de forma determinística, o *efeito* da revisão sobre as métricas, e jamais para afirmar desempenho de um LLM real.""",
     ),
     (
         "md",
         """### 14.1 Aplicando o stub aos casos `LLM_REVIEW`
 
-Tomamos a triagem do modo `vigilancia` (rota A, seção 11), selecionamos os pares roteados a `LLM_REVIEW` e aplicamos `llm_review_stub`. As taxas de erro vêm de `cfg.llm_review.error_rates_by_band` — exatamente as que o motor usa para estimar o custo da revisão (`loss_llm`). A semente fixa garante que a simulação é reprodutível.""",
+Tomamos a triagem do modo `vigilancia` (rota A, seção 11), selecionamos os pares roteados a `LLM_REVIEW` e aplicamos `llm_review_stub`. As taxas de erro vêm de `cfg.llm_review.error_rates_by_band`, exatamente as que o motor usa para estimar o custo da revisão (`loss_llm`). A semente fixa garante que a simulação é reprodutível.""",
     ),
     (
         "code",
@@ -1893,9 +1924,9 @@ card_heroi(out_vig, hero_idx, ["nota_final", "band", "p_cal", "action", "TARGET"
     ),
     (
         "md",
-        """**Recap.** Simulamos a etapa de revisão de forma determinística e transparente: o stub resolve os casos `LLM_REVIEW` com taxas de erro por banda vindas da config, sem qualquer chamada de rede. Medimos seu efeito sobre precisão/recall/F1 finais e acompanhamos o herói. Deixamos explícito que isto é uma **simulação** — um LLM real exigiria o protocolo `dual_agent_plus_arbiter` com dossiês e guardas de vazamento de PII.
+        """**Recap.** Simulamos a etapa de revisão de forma determinística e transparente: o stub resolve os casos `LLM_REVIEW` com taxas de erro por banda vindas da config, sem qualquer chamada de rede. Medimos seu efeito sobre precisão/recall/F1 finais e acompanhamos o herói. Deixamos explícito que isto é uma **simulação**: um LLM real exigiria o protocolo `dual_agent_plus_arbiter` com dossiês e guardas de vazamento de PII.
 
-**O que vem a seguir.** Com todos os estágios reproduzidos, fechamos o notebook com uma síntese do que foi demonstrado e — com igual destaque — das **limitações** que delimitam honestamente o que estes resultados significam.""",
+**O que vem a seguir.** Com todos os estágios reproduzidos, fechamos o notebook com uma síntese do que foi demonstrado e, com igual destaque, das **limitações** que delimitam honestamente o que estes resultados significam.""",
     ),
 ]
 
@@ -1905,9 +1936,9 @@ FASE_INTERATIVO: list[tuple[str, str]] = [
         "md",
         """## 15. Painel interativo (opcional)
 
-**Objetivo de aprendizagem.** Ao final desta seção, você será capaz de **manipular** o limiar de decisão e a inclinação (*slope*) do Platt e **observar em tempo real** como precisão, recall e custo esperado se movem — conectando, de forma tátil, calibração → ponto de operação → custo.
+**Objetivo de aprendizagem.** Ao final desta seção, você será capaz de **manipular** o limiar de decisão e a inclinação (*slope*) do Platt e **observar em tempo real** como precisão, recall e custo esperado se movem, conectando, de forma tátil, calibração, ponto de operação e custo.
 
-**Intuição.** As seções anteriores fixaram limiares e *slope*. Aqui você "pega no volante": mover o limiar para a direita exige mais confiança para declarar `MATCH` (sobe a precisão, cai o recall); reescalar o *slope* torna a curva de calibração mais íngreme ou mais suave. O custo esperado (FP×10 + FN×50, modo `vigilancia`) reage a cada escolha. Reutilizamos o conjunto de **teste held-out** e o modelo Platt da seção 9.3 — ou seja, brincamos com a rota metodologicamente correta.
+**Intuição.** As seções anteriores fixaram limiares e *slope*. Aqui você "pega no volante": mover o limiar para a direita exige mais confiança para declarar `MATCH` (sobe a precisão, cai o recall); reescalar o *slope* torna a curva de calibração mais íngreme ou mais suave. O custo esperado (FP×10 + FN×50, modo `vigilancia`) reage a cada escolha. Reutilizamos o conjunto de **teste held-out** e o modelo Platt da seção 9.3. Ou seja, brincamos com a rota metodologicamente correta.
 
 > **Headless-safe.** Esta célula **sempre** renderiza uma figura **estática** (limiar 0,50, *slope* ×1,0), garantindo saída reprodutível na execução automatizada (`papermill`/`nbconvert`). Os **sliders** do `ipywidgets` só ativam quando há um frontend Jupyter ao vivo; em modo headless são ignorados sem erro (protegidos por `try/except`). Para interagir, abra o notebook no Jupyter Lab/Notebook e execute esta célula.""",
     ),
@@ -2004,24 +2035,24 @@ as limitações que impedem leituras exageradas dos resultados.
 
 Percorremos o pipeline inteiro sobre um dataset **100% sintético**, estágio a estágio:
 
-1. **Carga e feature engineering** — dos subscores crus do comparador às features agregadas,
+1. **Carga e feature engineering**: dos subscores crus do comparador às features agregadas,
    flags e MACD que o pacote realmente consome.
-2. **Bandas** — o binning de `nota_final` que organiza a zona cinzenta (`grey_*`) onde mora a
+2. **Bandas**: o binning de `nota_final` que organiza a zona cinzenta (`grey_*`) onde mora a
    incerteza.
-3. **Calibração (Platt)** — derivamos a matemática e mostramos **duas rotas**: a rota A
+3. **Calibração (Platt)**: derivamos a matemática e mostramos **duas rotas**: a rota A
    *in-sample* (que reproduz a ferramenta) e a rota B *held-out* (a única que mede
    generalização). Validamos a calibração contra a posterior verdadeira `p_true`, com **ECE** e
-   **Brier** numéricos — não apenas o gráfico.
-4. **Guardrails** — as regras determinísticas de segurança e os casos sintéticos que cada uma
+   **Brier** numéricos, e não apenas o gráfico.
+4. **Guardrails**: as regras determinísticas de segurança e os casos sintéticos que cada uma
    dispara.
-5. **Triagem por custo esperado** — a decisão `MATCH`/`NONMATCH`/`LLM_REVIEW` nos modos
+5. **Triagem por custo esperado**: a decisão `MATCH`/`NONMATCH`/`LLM_REVIEW` nos modos
    `vigilancia` (recall) e `confirmacao` (precisão).
-6. **Reconciliação com `run_v3`** — a rota A manual reproduz `run_v3` **bit a bit** para o Platt
+6. **Reconciliação com `run_v3`**: a rota A manual reproduz `run_v3` **bit a bit** para o Platt
    determinístico (banda idêntica, `p_cal` com `atol≤1e-9`, ação idêntica).
-7. **Avaliação held-out multi-seed** — precisão/recall/F-beta e cobertura automática com
+7. **Avaliação held-out multi-seed**: precisão/recall/F-beta e cobertura automática com
    variância entre seeds, curvas PR/ROC e a superfície de custo vs. limiar ligando a política ao
    ponto de operação ótimo.
-8. **Revisão LLM (stub)** — uma simulação determinística e transparente do estágio clerical.
+8. **Revisão LLM (stub)**: uma simulação determinística e transparente do estágio clerical.
 
 ### 16.2 Limitações (leia antes de generalizar)
 
@@ -2031,10 +2062,10 @@ As limitações abaixo são parte essencial da leitura honesta:
 - **Dados sintéticos.** Todo o dataset foi gerado por código (`synthetic_data.py`) a partir de uma
   posterior verdadeira conhecida `p_true`. Isso é ótimo para *provar* que a calibração recupera a
   verdade, mas as distribuições, a prevalência (`match_ratio`) e a estrutura de subscores foram
-  escolhidas para a didática — **não** refletem uma base populacional real.
+  escolhidas para a didática e **não** refletem uma base populacional real.
 - **In-sample × held-out.** O `run_v3` calibra *in-sample* (ajusta e pontua as mesmas
   linhas). Um *reliability diagram* sobre esses mesmos dados é otimista por construção. **Só** a
-  rota B (held-out, via `evaluate_v3_dataframe`) mede generalização — e foi nela que reportamos as
+  rota B (held-out, via `evaluate_v3_dataframe`) mede generalização, e foi nela que reportamos as
   métricas.
 - **Config × código.** A config promete calibração `anchor_platt` **por banda** e uma regra
   `grey_mother_missing`; o código implementado faz **Platt global** e **não** aplica aquela regra.
@@ -2042,14 +2073,14 @@ As limitações abaixo são parte essencial da leitura honesta:
 - **Vazamento por grupo.** Demonstramos o split *group-aware*, mas neste sintético o efeito de
   vazamento é **negligenciável por construção** (os grupos `COMPREC`/`REFREC` são quase todos
   singletons). Em produção, com *blocking* e múltiplos pares por registro, o split por linha
-  inflaria as métricas — por isso o split por grupo é a prática correta.
+  inflaria as métricas, e por isso o split por grupo é a prática correta.
 - **LLM simulado.** A etapa de revisão é um **stub determinístico** que usa o rótulo
   verdadeiro `TARGET` mais taxas de erro por banda. **Não** é um LLM real, não há chamada de rede,
-  e a "acurácia" do stub é um artefato das taxas injetadas — não uma medida de um modelo real.
+  e a "acurácia" do stub é um artefato das taxas injetadas, não uma medida de um modelo real.
 - **XGBoost não-determinístico.** O apêndice de ML é apenas **qualitativo**: a reconciliação
   exata vale para o Platt determinístico, não para o XGBoost.
 - **Âncora de guardrail.** O `ALWAYS_MATCH` real exige `nota_final ≥ 10` **e** nome/data/município
-  perfeitos — mais estrito do que a leitura ingênua de "`nota ≥ 9`".
+  perfeitos, mais estrito do que a leitura ingênua de "`nota ≥ 9`".
 
 ### 16.3 Recap final
 
@@ -2086,7 +2117,7 @@ def build() -> nbformat.NotebookNode:
         },
         "language_info": {"name": "python"},
         "gzcmd_notebook": {
-            "title": "GZ-CMD++ v3 — Passo a Passo",
+            "title": "GZ-CMD++ v3: Passo a Passo",
             "generated_by": "notebooks/build_notebook.py",
         },
     }
