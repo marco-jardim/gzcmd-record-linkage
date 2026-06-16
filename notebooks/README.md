@@ -1,5 +1,7 @@
 # Notebook didático — GZ-CMD Passo a Passo
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marco-jardim/gzcmd-record-linkage/blob/master/notebooks/gzcmd_passo_a_passo.ipynb)
+
 Material de apresentação (PT-BR, público técnico/acadêmico) que reproduz, passo a
 passo, o pipeline do motor de decisão **GZ-CMD++ v3** (`gzcmd_record_linkage`)
 sobre um **dataset 100% sintético** gerado para a apresentação.
@@ -22,6 +24,27 @@ visualização.
 
 O dataset gerado é salvo (e versionado) em
 `../data/synthetic/comparador_sintetico.csv`.
+
+## Rodar no Google Colab
+
+Clique no selo **Open in Colab** acima (ou abra o `.ipynb` via *File → Open
+notebook → GitHub*). **Não é preciso nenhum passo manual de setup:** a primeira
+célula do notebook (*bootstrap*) detecta que está no Colab — onde o repositório
+não está presente — e automaticamente:
+
+1. **clona** o repositório (`git clone --depth 1`);
+2. **instala** a biblioteca `gzcmd_record_linkage` via `pip`;
+3. coloca os módulos auxiliares (`synthetic_data`, `nb_helpers`) no `sys.path`;
+4. aponta a pasta de dados para `data/synthetic/`, que **já contém o CSV
+   versionado**.
+
+Depois é só executar as células de cima para baixo (*Runtime → Run all*).
+
+> **Por que isso importa?** Se você abrir o `.ipynb` solto (sem o repositório), as
+> bibliotecas e os dados não existem no ambiente do Colab — daí a clássica "pasta
+> de dados vazia" e o erro `ModuleNotFoundError: synthetic_data`. O *bootstrap*
+> resolve os dois problemas de uma vez. A primeira execução leva ~1 min (clone +
+> `pip install`); execuções seguintes reutilizam o que já foi baixado.
 
 ## Pré-requisitos
 

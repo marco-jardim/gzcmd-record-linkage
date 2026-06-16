@@ -30,20 +30,48 @@ from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 # (papermill/nbconvert) localizando a raiz do repositório e ajustando sys.path.
 # ---------------------------------------------------------------------------
 BOOTSTRAP = """\
-# Bootstrap de ambiente: localiza a raiz do repositório e configura os caminhos.
-# (Necessário para que `import synthetic_data` funcione em execução headless.)
+# Bootstrap de ambiente: torna o notebook executável tanto LOCALMENTE quanto no
+# GOOGLE COLAB.
+#
+# - Localmente (repositório já clonado): localiza a raiz do repo procurando o
+#   `pyproject.toml` nas pastas-pai e ajusta o `sys.path`.
+# - No Google Colab (você abriu apenas o .ipynb, sem o repositório): clonamos o
+#   repositório e instalamos a biblioteca. Assim a lib `gzcmd_record_linkage`, os
+#   módulos do notebook (`synthetic_data`/`nb_helpers`) E os dados versionados
+#   (`data/synthetic/comparador_sintetico.csv`) ficam disponíveis — é isto que
+#   evita a "pasta de dados vazia".
+import subprocess
 import sys
 from pathlib import Path
 
+# Repositório público com a biblioteca, os módulos do notebook e os dados.
+REPO_URL = "https://github.com/marco-jardim/gzcmd-record-linkage.git"
 
-def _find_repo_root(start: Path) -> Path:
+
+def _find_repo_root(start: Path) -> Path | None:
     for candidate in [start, *start.parents]:
         if (candidate / "pyproject.toml").exists():
             return candidate
-    return start
+    return None
 
 
 REPO_ROOT = _find_repo_root(Path.cwd().resolve())
+
+if REPO_ROOT is None:
+    # Não há repositório no disco (cenário típico do Google Colab). Clonamos e
+    # instalamos o pacote. A primeira execução leva ~1 min; as seguintes reusam.
+    _dest = Path.cwd() / "gzcmd-record-linkage"
+    if not (_dest / "pyproject.toml").exists():
+        print(f"Clonando {REPO_URL} ...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", REPO_URL, str(_dest)], check=True
+        )
+    print("Instalando a biblioteca gzcmd_record_linkage (pip)...")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", str(_dest)], check=True
+    )
+    REPO_ROOT = _dest
+
 NB_DIR = REPO_ROOT / "notebooks"
 for _path in (str(REPO_ROOT), str(NB_DIR)):
     if _path not in sys.path:
@@ -51,7 +79,11 @@ for _path in (str(REPO_ROOT), str(NB_DIR)):
 
 DATA_DIR = REPO_ROOT / "data" / "synthetic"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-print(f"Raiz do repositório: {REPO_ROOT}")"""
+
+_csv_versionado = DATA_DIR / "comparador_sintetico.csv"
+print(f"Raiz do repositório: {REPO_ROOT}")
+print(f"Pasta de dados.....: {DATA_DIR}")
+print(f"CSV versionado já presente: {_csv_versionado.exists()}")"""
 
 
 # ===========================================================================
@@ -178,7 +210,15 @@ Ao final deste notebook, teremos demonstrado, com números e gráficos honestos:
 **O que vamos fazer a seguir.** A próxima célula prepara o ambiente: importa as
 bibliotecas, configura os caminhos do repositório e fixa a *seed*. Em seguida,
 geramos o dataset sintético e o salvamos como CSV no formato que o `loader` espera
-(`;` como separador, `,` como decimal).""",
+(`;` como separador, `,` como decimal).
+
+> **▶️ Rodando no Google Colab?** Não precisa fazer nada manual: a célula de
+> *bootstrap* abaixo detecta que o repositório não está presente, **clona-o** e
+> **instala a biblioteca** automaticamente. Com isso, a biblioteca
+> `gzcmd_record_linkage`, os módulos auxiliares do notebook e os **dados
+> versionados** ficam disponíveis — é o que evita a clássica "pasta de dados
+> vazia" quando se abre o `.ipynb` solto. Localmente (com o repositório já
+> clonado), a mesma célula apenas localiza a raiz do projeto e segue em frente.""",
     ),
     ("code", BOOTSTRAP),
     (
