@@ -1749,16 +1749,107 @@ card_heroi(out_vig, hero_idx, ["nota_final", "band", "p_cal", "action", "TARGET"
 ]
 
 
+FASE_INTERATIVO: list[tuple[str, str]] = [
+    (
+        "md",
+        """## 15. Painel interativo (opcional)
+
+**Objetivo de aprendizagem.** Ao final desta seção, você será capaz de **manipular** o limiar de decisão e a inclinação (*slope*) do Platt e **observar em tempo real** como precisão, recall e custo esperado se movem — conectando, de forma tátil, calibração → ponto de operação → custo.
+
+**Intuição.** As seções anteriores fixaram limiares e *slope*. Aqui você "pega no volante": mover o limiar para a direita exige mais confiança para declarar `MATCH` (sobe a precisão, cai o recall); reescalar o *slope* torna a curva de calibração mais íngreme ou mais suave. O custo esperado (FP×10 + FN×50, modo `vigilancia`) reage a cada escolha. Reutilizamos o conjunto de **teste held-out** e o modelo Platt da seção 9.3 — ou seja, brincamos com a rota metodologicamente correta.
+
+> **Headless-safe (DEC-10 / CA-G1).** Esta célula **sempre** renderiza uma figura **estática** (limiar 0,50, *slope* ×1,0), garantindo saída reprodutível na execução automatizada (`papermill`/`nbconvert`). Os **sliders** do `ipywidgets` só ativam quando há um frontend Jupyter ao vivo; em modo headless são ignorados sem erro (protegidos por `try/except`). Para interagir, abra o notebook no Jupyter Lab/Notebook e execute esta célula.""",
+    ),
+    (
+        "code",
+        """import matplotlib.pyplot as plt
+import numpy as np  # noqa: F401  (garante np disponível mesmo se a seção 8 não rodou)
+
+from gzcmd_record_linkage.calibration import PlattModel, predict_platt
+from gzcmd_record_linkage.metrics import confusion_counts, f1, precision, recall
+
+# Reutilizamos o conjunto de teste held-out e o modelo Platt ajustado no treino (seção 9.3).
+nota_test = df_test["nota_final"].to_numpy(dtype=float)
+y_test_int = df_test["TARGET"].astype(int).to_numpy()
+CUSTO_FP, CUSTO_FN = 10.0, 50.0  # custos do modo "vigilancia"
+
+
+def painel_operacao(limiar=0.50, escala_slope=1.0):
+    \"\"\"Recalcula p_cal com o slope reescalado, aplica o limiar e mostra o efeito.\"\"\"
+    modelo = PlattModel(
+        intercept=platt_holdout.intercept,
+        slope=platt_holdout.slope * escala_slope,
+    )
+    p = predict_platt(pd.Series(nota_test), model=modelo).to_numpy()
+    pred = (p >= limiar).astype(int)
+    cc = confusion_counts(y_test_int, pred)
+    prec, rec, f = precision(cc), recall(cc), f1(cc)
+    custo = cc.fp * CUSTO_FP + cc.fn * CUSTO_FN
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+    ax1.hist(p[y_test_int == 1], bins=20, range=(0, 1), alpha=0.6, label="match (y=1)")
+    ax1.hist(p[y_test_int == 0], bins=20, range=(0, 1), alpha=0.6, label="nao-match (y=0)")
+    ax1.axvline(limiar, color="red", linestyle="--", label=f"limiar = {limiar:.2f}")
+    ax1.set_title("Probabilidade calibrada por classe (teste held-out)")
+    ax1.set_xlabel("p_cal")
+    ax1.set_ylabel("contagem de pares")
+    ax1.legend()
+
+    ax2.bar(
+        ["precisao", "recall", "F1"],
+        [prec, rec, f],
+        color=["#4C72B0", "#55A868", "#C44E52"],
+    )
+    ax2.set_ylim(0, 1.08)
+    ax2.set_title(f"Custo esperado (FP x{CUSTO_FP:.0f} + FN x{CUSTO_FN:.0f}) = {custo:.0f}")
+    ax2.set_xlabel("metrica")
+    ax2.set_ylabel("valor")
+    for i, v in enumerate([prec, rec, f]):
+        ax2.text(i, v + 0.02, f"{v:.2f}", ha="center")
+    fig.tight_layout()
+    plt.show()
+
+
+# Versao ESTATICA: sempre executa (garante saida no modo headless -- papermill/nbconvert).
+painel_operacao(limiar=0.50, escala_slope=1.0)
+
+# Versao INTERATIVA: so ativa quando ha um frontend de widgets (Jupyter ao vivo).
+# Protegida por try/except para nunca quebrar a execucao headless (DEC-10 / CA-G1).
+try:
+    import ipywidgets as widgets
+    from IPython.display import display
+
+    painel = widgets.interactive(
+        painel_operacao,
+        limiar=widgets.FloatSlider(
+            value=0.50, min=0.0, max=1.0, step=0.01, description="Limiar MATCH"
+        ),
+        escala_slope=widgets.FloatSlider(
+            value=1.0, min=0.3, max=3.0, step=0.1, description="Escala slope"
+        ),
+    )
+    display(painel)
+    print("Sliders ativos: arraste para ver precisao/recall/custo ao vivo.")
+except Exception as exc:  # pragma: no cover - fallback headless
+    print(f"[modo nao-interativo: {type(exc).__name__}] use a figura estatica acima.")""",
+    ),
+    (
+        "md",
+        """**Recap da seção.** Você ajustou interativamente o limiar e o *slope* e viu o trade-off precisão × recall × custo se materializar. É exatamente esse trade-off que a política de custo esperado (seção 11) **automatiza** ao escolher o ponto de operação de cada modo. A seguir, fechamos com conclusões e limitações.""",
+    ),
+]
+
+
 FASE_4_1: list[tuple[str, str]] = [
     (
         "md",
-        """## 15. Conclusões e limitações
+        """## 16. Conclusões e limitações
 
 **Objetivo de aprendizagem.** Ao final desta seção, você será capaz de **resumir** o que cada
 estágio do GZ-CMD++ v3 faz, **articular** por que a metodologia adotada é honesta e **enumerar**
 as limitações que impedem leituras exageradas dos resultados.
 
-### 15.1 O que demonstramos
+### 16.1 O que demonstramos
 
 Percorremos o pipeline inteiro sobre um dataset **100% sintético**, estágio a estágio:
 
@@ -1781,7 +1872,7 @@ Percorremos o pipeline inteiro sobre um dataset **100% sintético**, estágio a 
    ponto de operação ótimo.
 8. **Revisão LLM (stub)** — uma simulação determinística e transparente do estágio clerical.
 
-### 15.2 Limitações (leia antes de generalizar)
+### 16.2 Limitações (leia antes de generalizar)
 
 Estes resultados são uma **demonstração didática**, não evidência empírica sobre dados reais.
 As limitações abaixo são parte essencial da leitura honesta:
@@ -1809,7 +1900,7 @@ As limitações abaixo são parte essencial da leitura honesta:
 - **Âncora de guardrail.** O `ALWAYS_MATCH` real exige `nota_final ≥ 10` **e** nome/data/município
   perfeitos — mais estrito do que a leitura ingênua de "`nota ≥ 9`".
 
-### 15.3 Recap final
+### 16.3 Recap final
 
 O valor deste notebook não é "o modelo acertou X%", e sim **mostrar como cada decisão é tomada,
 por quê, e sob quais hipóteses**. A separação rota A × rota B, a validação contra `p_true` e a
@@ -1829,6 +1920,7 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
     FASE_3_1,
     FASE_3_2,
     FASE_3_3,
+    FASE_INTERATIVO,
     FASE_4_1,
 ]
 

@@ -8,7 +8,7 @@
 - `pytest` (suíte completa): **101 passed**, 2 warnings (xgboost CUDA→CPU, benigno) — sem `skip`/`xfail`.
 - `nbconvert --to notebook --execute`: **exit 0**, artefato 507 KB (`docs/plans/qa/gzcmd_passo_a_passo.executed.ipynb`, não versionado por DEC-03).
 - `ruff check` + `ruff format --check`: **limpos** em `notebooks/*.py` e `tests/*`.
-- Notebook: **103 células**, 15 seções, 37 células de código — todas precedidas por markdown (DF-3).
+- Notebook: **106 células**, 16 seções, 38 células de código — todas precedidas por markdown (DF-3).
 
 ## Avaliação por eixo (rubrica Seção 4)
 
@@ -34,8 +34,9 @@
 - 🔴 bloqueantes: **nenhum**.
 - 🟡 importantes: **nenhum** (o backlog 🟡/🟢 das fases anteriores foi zerado na Fase 4.1).
 - 🟢 nice-to-have (backlog, não-bloqueante):
-  - DEC-10 (`ipywidgets` interativo) **não implementado** — opcional por plano; manteria a execução headless segura via `try/except`/flag se adicionado no futuro.
   - DEC-02 apêndice XGBoost permanece **markdown-only** (decisão consciente por R-13).
+
+> **Atualização pós-release (Fase 4.4).** DEC-10 (`ipywidgets`) foi **implementado** (seção 15, "Painel interativo"): sliders de limiar + escala do *slope* mostrando precisão/recall/custo ao vivo, com fallback estático **headless-safe** (`try/except`) que preserva CA-G1. Verificado: 101 testes passando, NBEXEC executa a célula sem erro, `ruff` limpo. Ver `REVIEW-4.4.md`.
 
 ## Critérios globais
 - **CA-G1…CA-G9:** todos satisfeitos (ver `conformidade-final.md`).

@@ -32,7 +32,7 @@
 | DEC-07 | Duas rotas explícitas (A fiel / B correta) | ✅ | Sec 9.2 (A) e 9.3 (B) |
 | DEC-08 | ECE + Brier quantitativos | ✅ | `nb_helpers.expected_calibration_error`/`brier_score` + `test_nb_helpers.py` |
 | DEC-09 | Andaime didático obrigatório | ✅ | objetivos/intuição/herói/recap por seção |
-| DEC-10 | Interatividade `ipywidgets` (opcional) | 📝 | **Não implementado**. Plano marca como opcional e não-bloqueante (não pode ser pré-requisito da execução headless / CA-G1). Backlog. |
+| DEC-10 | Interatividade `ipywidgets` (opcional) | ✅ | **Implementado** (seção 15, "Painel interativo"): sliders de limiar + escala do *slope* → precisão/recall/custo ao vivo. **Headless-safe** via `try/except` + figura estática sempre renderizada (não quebra `papermill`/`nbconvert` / CA-G1). |
 
 ## Riscos e Mitigações (R-01…R-13)
 
@@ -66,7 +66,7 @@ em `test_env_smoke`, `test_api_contract`, `test_scaffold_imports`,
 
 ## DoD Final (Seção 5.2.1)
 - **DF-1** (rodar tudo) — ✅ `pytest` 101 passed + `nbconvert` exit 0; saídas coerentes com a narrativa (números de reconciliação, AUCs, taxas do stub conferidos).
-- **DF-2** (conformidade) — ✅ este documento; **nenhum item omitido silenciosamente** (2 itens 📝 justificados: DEC-10 opcional, DEC-02 apêndice markdown).
+- **DF-2** (conformidade) — ✅ este documento; **nenhum item omitido silenciosamente** (1 item 📝 justificado: DEC-02 apêndice XGBoost markdown-only por R-13; DEC-10 agora implementado).
 - **DF-3** (explicação antes de cada etapa) — ✅ `auditoria-didatica.md` + `test_notebook_didatica.py`.
 
 **Conclusão:** conformidade global satisfeita. Nenhum ❌.

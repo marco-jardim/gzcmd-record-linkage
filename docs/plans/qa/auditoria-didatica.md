@@ -9,14 +9,14 @@ explica, em PT-BR, **o quê** e **o porquê** do passo seguinte. Nenhuma célula
 de código pode ser "órfã" (sem contexto prévio).
 
 ## Método
-Análise **estática** via `nbformat` (sem executar o kernel): percorre as 103
+Análise **estática** via `nbformat` (sem executar o kernel): percorre as 106
 células do notebook na ordem e verifica, para cada célula `code` substantiva
 (fonte não-vazia), que a célula **imediatamente anterior** é `markdown`
 não-vazia. Conjunto de exceções explícito (`EXCECOES_ORFAS`) — atualmente
 **vazio**.
 
 ## Resultado
-**APROVADO.** As 37 células de código do notebook são **todas** imediatamente
+**APROVADO.** As 38 células de código do notebook são **todas** imediatamente
 precedidas por uma célula markdown explicativa. **Zero** células órfãs; **zero**
 ocorrências de código consecutivo. Não foi necessária nenhuma exceção.
 
@@ -35,6 +35,7 @@ Mapeamento (índice da célula de código → markdown imediatamente antes):
 | 12. Reconciliação | 76, 78 | md 75/77 ✅ |
 | 13. Avaliação held-out | 83, 85, 87, 90, 92 | md 82/84/86/89/91 ✅ |
 | 14. Revisão LLM | 96, 98, 100 | md 95/97/99 ✅ |
+| 15. Painel interativo | 103 | md 102 ✅ |
 
 Além disso, o notebook **abre** com narrativa markdown (células 0–4) antes da
 primeira célula de código (verificado por teste de sanidade dedicado).

@@ -598,7 +598,7 @@ Princípios que o notebook **deve** seguir (auditados no eixo 10 do QA):
 - **DEC-06** posterior verdadeira `p*(x)=σ(0.85·(nota−s0))`, `TARGET~Bernoulli(p*)`; coluna de validação `p_true` nunca entra no pipeline. ✅ (Platt recupera `p*` com MAE ~0.009 in-sample / ECE pequeno held-out.)
 - **DEC-07** rotas A (fiel/in-sample) e B (correta/held-out) explícitas. ✅
 - **DEC-08** ECE + Brier em `nb_helpers` com testes fechados. ✅
-- **DEC-10** `ipywidgets` interativo **não implementado** (opcional por plano; não pode ser pré-requisito da execução headless). 📝 Backlog.
+- **DEC-10** `ipywidgets` interativo **implementado** (Fase 4.4, seção 15 "Painel interativo"): sliders de limiar + escala do *slope* → precisão/recall/custo ao vivo, com figura estática de fallback **headless-safe** (`try/except`) que não quebra `papermill`/`nbconvert` (CA-G1). ✅
 
 ### Achados de QA e correções
 - **Fase 3.2 (eixo 9):** demo de vazamento `row` vs grupo mostrou efeito **negligenciável** (grupos majoritariamente singletons). Corrigido para **medir e explicar com honestidade** o mecanismo (sem forjar inflação). 📝 (R-12.)
