@@ -46,7 +46,7 @@ _BASE_SCENARIO_VALUES: dict[str, object] = {
     "ENDERECO numero igual": 0.5,
     "ENDERECO compl prox": 0.5,
     "ENDERECO texto prox": 0.5,
-    "ENDERECO tokens jaccard": 0.5,
+    "ENDERECO tokens jacc": 0.5,
     "CODMUNRES local igual": 0,
     R_DTNASC: "19800510",
     C_DTNASC: "19800510",
@@ -100,7 +100,7 @@ def _scenario_row(name: str) -> dict[str, object]:
                 "ENDERECO numero igual": 0.95,
                 "ENDERECO compl prox": 0.95,
                 "ENDERECO texto prox": 0.95,
-                "ENDERECO tokens jaccard": 0.95,
+                "ENDERECO tokens jacc": 0.95,
             }
         )
     elif name == "nonmatch_obvio":
@@ -124,7 +124,7 @@ def _scenario_row(name: str) -> dict[str, object]:
                 "ENDERECO numero igual": 0.0,
                 "ENDERECO compl prox": 0.0,
                 "ENDERECO texto prox": 0.0,
-                "ENDERECO tokens jaccard": 0.0,
+                "ENDERECO tokens jacc": 0.0,
             }
         )
     elif name == "homonimo":
@@ -146,7 +146,7 @@ def _scenario_row(name: str) -> dict[str, object]:
                 "ENDERECO numero igual": 0.0,
                 "ENDERECO compl prox": 0.0,
                 "ENDERECO texto prox": 0.0,
-                "ENDERECO tokens jaccard": 0.0,
+                "ENDERECO tokens jacc": 0.0,
             }
         )
     elif name == "obito_antes_diag":
@@ -476,7 +476,10 @@ def to_comparador_csv(frame: pd.DataFrame, path: str | Path) -> Path:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     csv_frame = frame.drop(columns=["p_true"], errors="ignore")
-    csv_frame.to_csv(output, sep=";", decimal=",", encoding="utf-8", index=False)
+    csv_frame.to_csv(
+        output, sep=";", decimal=",", encoding="utf-8", index=False,
+        lineterminator="\n",
+    )
     return output
 
 
