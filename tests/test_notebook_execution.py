@@ -12,9 +12,10 @@ kernel filho não depende de ``PYTHONPATH`` herdado.
 
 from __future__ import annotations
 
-import nbformat
 import pytest
 from _nb_paths import NOTEBOOK_PATH, REPO_ROOT
+
+nbformat = pytest.importorskip("nbformat")
 
 pytestmark = pytest.mark.notebook
 
@@ -45,6 +46,10 @@ def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
         "## 8. Atribuição de bandas",
         "## 9. Calibração",
         "boletim da calibração",
+        "Autocalibração por âncoras",
+        "Fβ",
+        "Random Forest",
+        "XGBoost",
         "## 10. Guardrails",
         "## 11. Política de decisão",
         "## 12. Reconciliação",
@@ -99,8 +104,9 @@ def test_tst_2_1_a_toda_celula_de_codigo_tem_fonte() -> None:
     assert not vazias, f"Células de código vazias nos índices: {vazias}"
 
 
-def test_tst_2_1_nbexec_executa_ponta_a_ponta() -> None:
+def test_tst_2_1_nbexec_executa_ponta_a_ponta(monkeypatch) -> None:
     """Executa o notebook inteiro de forma headless; falha se alguma célula der erro."""
+    monkeypatch.setenv("NBH_STRICT_WIDGETS", "1")
     nbclient = pytest.importorskip("nbclient")
     nb = _read_notebook()
     client = nbclient.NotebookClient(

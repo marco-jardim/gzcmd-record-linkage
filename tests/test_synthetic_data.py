@@ -260,3 +260,38 @@ def test_tst_1_2_d_scenarios_are_deterministic_and_indexed():
         name: 40 + index for index, name in enumerate(sd.SCENARIO_NAMES)
     }
     assert set(first.meta["scenarios"]) == set(sd.SCENARIO_NAMES)
+
+
+def test_scenario_address_tokens_share_the_random_rows_column(tmp_path):
+    dataset, csv_path = _scenario_csv(tmp_path)
+    frame = dataset.frame
+    assert not any("jaccard" in column for column in frame.columns)
+    assert frame["ENDERECO tokens jacc"].notna().all()
+    assert b"\r" not in csv_path.read_bytes()
+
+    loaded = _load(csv_path, macd_enabled=True)
+    assert not any("jaccard" in column for column in loaded.columns)
+    expected_scores = {
+        "match_obvio": 0.95,
+        "nonmatch_obvio": 0.0,
+        "homonimo": 0.0,
+        "obito_antes_diag": 0.5,
+        "mae_ausente": 0.5,
+        "datas_invertidas": 0.5,
+        "zona_cinzenta": 0.5,
+    }
+    for name, score in expected_scores.items():
+        row = loaded.iloc[dataset.meta["scenarios"][name]]
+        assert np.isclose(row["endereco_score_total"], score)
+        assert row["endereco_zero"] == int(score == 0)
+
+
+def test_versioned_csv_matches_notebook_generation(tmp_path):
+    from pathlib import Path
+
+    dataset = sd.generate_comparador(seed=42, n_pairs=600, scenarios="all")
+    regenerated = sd.to_comparador_csv(dataset.frame, tmp_path / "comparador.csv")
+    versioned = Path(__file__).resolve().parents[1] / (
+        "data/synthetic/comparador_sintetico.csv"
+    )
+    assert regenerated.read_bytes() == versioned.read_bytes()

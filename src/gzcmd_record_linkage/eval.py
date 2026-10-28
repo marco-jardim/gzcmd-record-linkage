@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, Sequence, cast
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,6 @@ from .loader import LoadConfig, load_comparador_csv
 from .metrics import ConfusionCounts, confusion_counts, metrics_dict
 from .runner import build_engine_from_config
 from .splitting import SplitBy, SplitSpec, split_train_test_indices
-
 
 CalibrationMethod = Literal["platt", "stub", "ml_rf", "ml_xgb"]
 
@@ -113,10 +113,7 @@ def _ensure_binary_target(df: pd.DataFrame, *, col: str = "TARGET") -> pd.Series
     if col not in df.columns:
         raise KeyError(f"Missing target column '{col}'")
     y_raw = pd.to_numeric(df[col], errors="coerce")
-    if isinstance(y_raw, pd.Series):
-        y = y_raw
-    else:  # pragma: no cover
-        y = pd.Series(y_raw, index=df.index)
+    y = y_raw if isinstance(y_raw, pd.Series) else pd.Series(y_raw, index=df.index)
 
     if y.isna().to_numpy(dtype=bool).any():
         n_bad = int(y.isna().sum())
@@ -140,6 +137,7 @@ def evaluate_v3_dataframe(
     calibration: CalibrationMethod,
     macd_enabled: bool,
     guardrails_enabled: bool = True,
+    classifier_config: ClassifierConfig | None = None,
 ) -> pd.DataFrame:
     work = df.copy()
     y_all = _ensure_binary_target(work)
@@ -210,14 +208,22 @@ def evaluate_v3_dataframe(
                 )
             elif calibration == "ml_rf":
                 clf = GZCMDClassifier(
-                    config=ClassifierConfig(classifier_type="random_forest")
+                    config=(
+                        replace(classifier_config, classifier_type="random_forest")
+                        if classifier_config is not None
+                        else ClassifierConfig(classifier_type="random_forest")
+                    )
                 )
                 clf.fit(train)
                 probs = clf.predict_proba(test)[:, 1]
                 test["p_cal"] = probs
             elif calibration == "ml_xgb":
                 clf = GZCMDClassifier(
-                    config=ClassifierConfig(classifier_type="xgboost")
+                    config=(
+                        replace(classifier_config, classifier_type="xgboost")
+                        if classifier_config is not None
+                        else ClassifierConfig(classifier_type="xgboost")
+                    )
                 )
                 clf.fit(train)
                 probs = clf.predict_proba(test)[:, 1]
@@ -301,6 +307,7 @@ def evaluate_v3_csv(
     calibration: CalibrationMethod,
     macd_enabled: bool,
     guardrails_enabled: bool = True,
+    classifier_config: ClassifierConfig | None = None,
 ) -> pd.DataFrame:
     cfg = load_config(config_path)
     df = load_comparador_csv(Path(input_csv), cfg=LoadConfig(macd_enabled=macd_enabled))
@@ -326,4 +333,5 @@ def evaluate_v3_csv(
         calibration=calibration,
         macd_enabled=macd_enabled,
         guardrails_enabled=guardrails_enabled,
+        classifier_config=classifier_config,
     )

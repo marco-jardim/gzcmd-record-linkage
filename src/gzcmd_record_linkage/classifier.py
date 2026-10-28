@@ -6,10 +6,11 @@ probability estimates based on the full feature set (aggregates + subscores + MA
 
 from __future__ import annotations
 
-import json
+import warnings
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import joblib
 import numpy as np
@@ -25,6 +26,50 @@ from .loader import COL_TARGET
 ClassifierType = Literal["random_forest", "xgboost"]
 
 
+@lru_cache(maxsize=1)
+def _detect_cuda_device() -> str:
+    """Detect if CUDA is available and return appropriate device string."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        # An unavailable or broken torch installation must not prevent probing XGBoost.
+        pass
+
+    # A CUDA-enabled build can still lack a usable GPU; validate with a tiny fit.
+    try:
+        import xgboost
+
+        if not xgboost.build_info().get("USE_CUDA"):
+            return "cpu"
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            probe = xgboost.XGBClassifier(
+                n_estimators=1, device="cuda", tree_method="hist"
+            )
+            probe.fit(
+                np.array([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]),
+                np.array([0, 1, 0, 1]),
+            )
+        fallback_messages = (
+            "no visible gpu",
+            "falling back to cpu",
+            "not compiled with cuda",
+        )
+        if any(
+            marker in str(warning.message).lower()
+            for warning in caught
+            for marker in fallback_messages
+        ):
+            return "cpu"
+        return "cuda"
+    except Exception:
+        # Probe failures mean CUDA cannot safely be selected automatically.
+        return "cpu"
+
+
 @dataclass(frozen=True)
 class ClassifierConfig:
     classifier_type: ClassifierType = "xgboost"
@@ -34,11 +79,13 @@ class ClassifierConfig:
     class_weight: str | dict | None = "balanced"
     # XGBoost parameters
     xgb_learning_rate: float = 0.1
-    xgb_n_estimators: int = 300
+    xgb_n_estimators: int = 500
     xgb_max_depth: int = 6
     xgb_scale_pos_weight: float | None = None
     xgb_subsample: float = 0.8
     xgb_colsample_bytree: float = 0.8
+    xgb_tree_method: str = "hist"
+    xgb_device: str | None = None  # None = auto-detect
     # Common parameters
     random_state: int = 42
     n_jobs: int = -1
@@ -85,13 +132,16 @@ def get_feature_columns(df: pd.DataFrame) -> list[str]:
     return sorted(cols)
 
 
+_DEFAULT_CLASSIFIER_CONFIG = ClassifierConfig()
+
+
 class GZCMDClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, config: ClassifierConfig = ClassifierConfig()):
+    def __init__(self, config: ClassifierConfig = _DEFAULT_CLASSIFIER_CONFIG):
         self.config = config
         self.features_: list[str] | None = None
         self.pipeline_: Pipeline | None = None
 
-    def fit(self, df: pd.DataFrame, y: pd.Series | None = None) -> "GZCMDClassifier":
+    def fit(self, df: pd.DataFrame, y: pd.Series | None = None) -> GZCMDClassifier:
         if y is None:
             if COL_TARGET not in df.columns:
                 raise ValueError(f"Target column '{COL_TARGET}' not found in DataFrame")
@@ -113,6 +163,11 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
                 n_pos = int((y == 1).sum())
                 scale_pos_weight = n_neg / n_pos if n_pos > 0 else 1.0
 
+            # Detect device (CUDA vs CPU)
+            device = self.config.xgb_device
+            if device is None:
+                device = _detect_cuda_device()
+
             base_clf = XGBClassifier(
                 learning_rate=self.config.xgb_learning_rate,
                 n_estimators=self.config.xgb_n_estimators,
@@ -120,6 +175,8 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
                 scale_pos_weight=scale_pos_weight,
                 subsample=self.config.xgb_subsample,
                 colsample_bytree=self.config.xgb_colsample_bytree,
+                tree_method=self.config.xgb_tree_method,
+                device=device,
                 random_state=self.config.random_state,
                 n_jobs=self.config.n_jobs,
                 use_label_encoder=False,
@@ -135,7 +192,7 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
             )
 
         # Pipeline: Impute -> Calibrated classifier
-        # We use CalibratedClassifierCV to get probabilities calibrated on the training set
+        # CalibratedClassifierCV provides probabilities calibrated on the training set
         # (via CV). CalibratedClassifierCV(method='sigmoid') applies Platt scaling.
 
         calibrated_clf = CalibratedClassifierCV(
@@ -184,7 +241,7 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
         joblib.dump(state, path)
 
     @classmethod
-    def load(cls, path: str | Path) -> "GZCMDClassifier":
+    def load(cls, path: str | Path) -> GZCMDClassifier:
         state = joblib.load(path)
         clf = cls(config=state["config"])
         clf.features_ = state["features"]
