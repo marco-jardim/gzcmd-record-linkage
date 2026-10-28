@@ -20,6 +20,7 @@ de tuplas ``(tipo, texto)`` com ``tipo in {"md", "code"}``.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import nbformat
@@ -71,6 +72,22 @@ if REPO_ROOT is None:
         subprocess.run(
             ["git", "clone", "--depth", "1", REPO_URL, str(_dest)], check=True
         )
+    else:
+        # Uma sessão anterior pode ter deixado uma cópia antiga: atualizamos,
+        # a menos que você tenha editado arquivos dela.
+        _editados = subprocess.run(
+            ["git", "-C", str(_dest), "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        if _editados:
+            print(
+                "Aviso: a cópia em gzcmd-record-linkage tem arquivos editados e NÃO foi "
+                "atualizada. Apague a pasta para baixar a versão atual."
+            )
+        else:
+            print("Atualizando a cópia já clonada ...")
+            subprocess.run(["git", "-C", str(_dest), "fetch", "--depth", "1", "origin"], check=True)
+            subprocess.run(["git", "-C", str(_dest), "reset", "--hard", "FETCH_HEAD"], check=True)
     print("Instalando a biblioteca gzcmd_record_linkage (pip)...")
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "-q", str(_dest)], check=True
@@ -82,6 +99,15 @@ for _path in (str(REPO_ROOT / "src"), str(NB_DIR)):
     if _path in sys.path:
         sys.path.remove(_path)
     sys.path.insert(0, _path)
+
+# Se esta sessão já importou versões antigas dos módulos, esquecemos essas
+# cópias para que os imports a seguir leiam os arquivos atuais do disco.
+import importlib
+
+for _modulo in list(sys.modules):
+    if _modulo in {"nb_helpers", "synthetic_data"} or _modulo.split(".")[0] == "gzcmd_record_linkage":
+        del sys.modules[_modulo]
+importlib.invalidate_caches()
 
 DATA_DIR = REPO_ROOT / "data" / "synthetic"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -258,6 +284,13 @@ import nb_helpers as nbh
 import synthetic_data
 from gzcmd_record_linkage import __version__ as gzcmd_version
 from gzcmd_record_linkage.config import load_config
+
+_faltando = [nome for nome in ("fmt_br", "ece_noise_floor", "interagir") if not hasattr(nbh, nome)]
+if _faltando:
+    raise ImportError(
+        f"O nb_helpers carregado ({nbh.__file__}) é de uma versão antiga: faltam {_faltando}. "
+        "Rode de novo a célula de setup acima (ela atualiza a cópia) ou reinicie a sessão."
+    )
 
 pd.set_option("display.max_columns", 60)
 pd.set_option("display.width", 140)
@@ -3589,6 +3622,30 @@ ALL_PHASES: list[list[tuple[str, str]]] = [
 ]
 
 
+# Depois de reiniciar a sessão (comum no Colab), rodar uma seção do meio dá
+# NameError em variáveis criadas antes. A primeira célula de código de cada
+# seção a partir da 5 confere isso e diz o que fazer.
+GUARDA_SESSAO = (
+    'assert "df_raw" in globals(), (\n'
+    '    "A sessão perdeu as variáveis das seções anteriores (foi reiniciada?). "\n'
+    '    "Clique nesta célula e use Ambiente de execução > Executar antes (Ctrl+F8)."\n'
+    ")\n"
+)
+_SECAO_RE = re.compile(r"^## (\d+)\.", re.MULTILINE)
+
+
+def _com_guarda_de_sessao(cells: list[nbformat.NotebookNode]) -> None:
+    secao_pendente = False
+    for cell in cells:
+        if cell.cell_type == "markdown":
+            achou = _SECAO_RE.search(cell.source)
+            if achou and int(achou.group(1)) >= 5:
+                secao_pendente = True
+        elif secao_pendente:
+            cell.source = GUARDA_SESSAO + cell.source
+            secao_pendente = False
+
+
 def build() -> nbformat.NotebookNode:
     nb = new_notebook()
     nb.metadata = {
@@ -3612,6 +3669,7 @@ def build() -> nbformat.NotebookNode:
                 cells.append(new_code_cell(text))
             else:  # pragma: no cover - guarda defensiva
                 raise ValueError(f"Tipo de célula desconhecido: {kind!r}")
+    _com_guarda_de_sessao(cells)
     for index, cell in enumerate(cells):
         cell.id = f"c{index:03d}"
         cell.metadata = {}

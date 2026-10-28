@@ -157,12 +157,88 @@ def test_bootstrap_local_nao_instala_sem_repositorio(monkeypatch, tmp_path):
         exec(source, {})
 
 
+def _proteger_modulos_do_projeto(monkeypatch):
+    # O bootstrap esquece módulos já importados; restauramos no teardown.
+    for nome in list(sys.modules):
+        raiz = nome.split(".")[0]
+        if raiz in {"nb_helpers", "synthetic_data", "gzcmd_record_linkage"}:
+            monkeypatch.setitem(sys.modules, nome, sys.modules[nome])
+
+
 def test_bootstrap_local_precede_src_e_notebooks(monkeypatch):
     root = Path(build_notebook.__file__).resolve().parents[1]
     monkeypatch.chdir(root)
     monkeypatch.setattr(sys, "path", list(sys.path))
+    _proteger_modulos_do_projeto(monkeypatch)
     exec(_celula_codigo_contendo("def _find_repo_root("), {})
     assert sys.path[:2] == [str(root / "notebooks"), str(root / "src")]
+
+
+def test_secoes_avisam_quando_a_sessao_foi_reiniciada():
+    cells = build_notebook.build().cells
+    secao = None
+    primeiras = {}
+    for cell in cells:
+        if cell.cell_type == "markdown":
+            achou = re.search(r"^## (\d+)\.", cell.source, re.MULTILINE)
+            if achou:
+                secao = int(achou.group(1))
+        elif secao is not None and secao >= 5 and secao not in primeiras:
+            primeiras[secao] = cell.source
+    # §15 e §16 são só texto; todas as seções com código de 5 a 14 têm guarda.
+    assert set(primeiras) == set(range(5, 15))
+    for numero, source in primeiras.items():
+        guarda = build_notebook.GUARDA_SESSAO
+        assert source.startswith(guarda), f"Seção {numero} sem guarda."
+    with pytest.raises(AssertionError, match="Executar antes"):
+        exec(build_notebook.GUARDA_SESSAO, {})
+    exec(build_notebook.GUARDA_SESSAO, {"df_raw": object()})
+
+
+def test_bootstrap_esquece_modulos_antigos(monkeypatch):
+    root = Path(build_notebook.__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    _proteger_modulos_do_projeto(monkeypatch)
+    antigo = SimpleNamespace(__name__="nb_helpers")
+    monkeypatch.setitem(sys.modules, "nb_helpers", antigo)
+    exec(_celula_codigo_contendo("def _find_repo_root("), {})
+    assert "nb_helpers" not in sys.modules
+
+
+@pytest.mark.parametrize("editados", ["", " M notebooks/nb_helpers.py"])
+def test_bootstrap_colab_atualiza_copia_existente(
+    monkeypatch, tmp_path, capsys, editados
+):
+    import subprocess
+
+    # Cenário do Colab: cwd (/content) sem pyproject e uma cópia clonada antes.
+    destino = tmp_path / "gzcmd-record-linkage"
+    destino.mkdir()
+    (destino / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setitem(sys.modules, "google.colab", SimpleNamespace())
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    _proteger_modulos_do_projeto(monkeypatch)
+    chamadas = []
+
+    def fake_run(cmd, *args, **kwargs):
+        chamadas.append(cmd)
+        saida = editados if "status" in cmd else ""
+        return subprocess.CompletedProcess(cmd, 0, stdout=saida, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    exec(_celula_codigo_contendo("def _find_repo_root("), {})
+    git_fetch = [c for c in chamadas if "fetch" in c]
+    git_reset = [c for c in chamadas if "reset" in c]
+    assert not any("clone" in c for c in chamadas)
+    assert any("pip" in c for c in chamadas)
+    if editados:
+        assert not git_fetch and not git_reset
+        assert "NÃO foi atualizada" in capsys.readouterr().out
+    else:
+        assert git_fetch and git_reset
+        assert git_reset[0][-1] == "FETCH_HEAD"
 
 
 def test_celula_csv_confere_sem_sobrescrever(tmp_path, capsys):
