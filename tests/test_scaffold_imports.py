@@ -18,7 +18,23 @@ def test_import_synthetic_data() -> None:
 
 def test_import_nb_helpers() -> None:
     mod = importlib.import_module("nb_helpers")
-    for name in ("expected_calibration_error", "brier_score", "llm_review_stub"):
+    expected = (
+        "expected_calibration_error", "brier_score", "llm_review_stub",
+        "reliability_points", "log_loss", "platt_newton_trace", "AnchorSpec",
+        "load_anchor_spec", "anchor_masks", "anchor_two_point_guess", "AnchorFit",
+        "fit_anchor_platt", "clamp_update", "simulate_anchor_windows",
+        "expected_losses", "decision_thresholds", "thresholds_table", "build_engine",
+        "review_status", "NOME_PESOS_LOADER", "MACD_JANELAS_LOADER", "nome_score",
+        "macd_flags", "auc_separacao", "assign_bands_with_edges", "band_transitions",
+        "guardrail_diff", "Deslizante", "Escolha", "Caixa", "interagir",
+        "plot_reliability", "plot_platt_explorer", "plot_costs_explorer",
+        "plot_anchor_comparison", "plot_bands_guardrails", "plot_feature_explorer",
+        "plot_budget_explorer", "plot_anchor_windows",
+        "classifier_importances", "model_comparison_metrics",
+        "plot_model_comparison", "plot_classifier_importances",
+        "ece_noise_floor", "paired_bootstrap_diff", "custo_esperado_por_par", "fmt_br",
+    )
+    for name in expected:
         assert hasattr(mod, name), f"esperado {name} em nb_helpers"
 
 

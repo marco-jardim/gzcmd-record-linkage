@@ -13,6 +13,11 @@ reconciliação exata com `run_v3`, avaliação held-out multi-seed (PR/ROC + cu
 vs. limiar) e revisão LLM simulada — cada um com explicação, matemática e
 visualização.
 
+Seis controles interativos acompanham os conceitos: pesos/MACD, Platt, âncoras
+(demo só no notebook), bandas/guardrails, custos e orçamento LLM. A §15 serve
+como guia; todos têm visão estática para execução sem interface. Para usar
+`ipywidgets`, instale o ferramental de `requirements/notebook.txt`.
+
 ## Conteúdo desta pasta
 
 | Arquivo | Papel |
@@ -20,7 +25,7 @@ visualização.
 | `gzcmd_passo_a_passo.ipynb` | Notebook da apresentação. **Arquivo gerado** — não editar à mão. |
 | `build_notebook.py` | **Fonte da verdade** do notebook: monta o `.ipynb` célula a célula via `nbformat`. Edite aqui e regenere. |
 | `synthetic_data.py` | Gerador de dataset sintético (importável/testável), com posterior verdadeira `p_true` (DEC-06). |
-| `nb_helpers.py` | Métricas de calibração (`expected_calibration_error`, `brier_score`) e stub determinístico de revisão LLM (`llm_review_stub`). |
+| `nb_helpers.py` | Métricas, demo de âncoras, figuras, seis controles opcionais e simulador determinístico de revisão LLM. |
 
 O dataset gerado é salvo (e versionado) em
 `../data/synthetic/comparador_sintetico.csv`.

@@ -24,8 +24,18 @@ Mantém-se *sem* a marca ``notebook`` porque é uma análise estática rápida
 
 from __future__ import annotations
 
-import nbformat
+import ast
+import re
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pandas as pd
+import pytest
 from _nb_paths import NOTEBOOK_PATH
+
+nbformat = pytest.importorskip("nbformat")
+build_notebook = pytest.importorskip("build_notebook")
 
 # Conjunto de exceções explícitas: primeira linha (strip) de células de código
 # autorizadas a NÃO ser precedidas por markdown. Cada entrada DEVE vir com uma
@@ -84,3 +94,190 @@ def test_tst_4_3_a_existe_markdown_antes_do_primeiro_codigo() -> None:
         c.cell_type == "markdown" and (c.source or "").strip()
         for c in nb.cells[:primeiro_codigo]
     ), "Não há markdown explicativo antes da primeira célula de código."
+
+
+def test_sem_saidas_armazenadas() -> None:
+    """O artefato versionado não guarda resultados nem contadores de execução."""
+    for i, cell in enumerate(_carregar_notebook().cells):
+        if cell.cell_type == "code":
+            assert cell.outputs == [], f"Saídas armazenadas na célula {i}."
+            assert cell.execution_count is None, f"Contador na célula {i}."
+
+
+def test_builder_em_sincronia() -> None:
+    """Construir em memória reproduz as fontes e os tipos do notebook entregue."""
+    gerado = build_notebook.build()
+    entregue = _carregar_notebook()
+    assert [(c.cell_type, c.source, c.id, c.metadata) for c in gerado.cells] == [
+        (c.cell_type, c.source, c.id, c.metadata) for c in entregue.cells
+    ]
+    assert gerado == build_notebook.build()
+
+
+def test_seis_controles() -> None:
+    codigo = "\n".join(
+        _sem_comentarios(c.source) for c in _carregar_notebook().cells
+        if c.cell_type == "code"
+    )
+    assert codigo.count("nbh.interagir(") == 6
+
+
+def test_wrappers_sem_renderizacao_duplicada() -> None:
+    for cell in _carregar_notebook().cells:
+        if cell.cell_type != "code" or "nbh.interagir(" not in cell.source:
+            continue
+        tree = ast.parse(cell.source)
+        assert "if not nbh.interagir(" in cell.source
+        for forbidden in (".plot(", "subplots(", "plt.figure("):
+            assert forbidden not in cell.source
+        wrappers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name.startswith("_ui_")]
+        assert len(wrappers) == 1
+        wrapper = ast.get_source_segment(cell.source, wrappers[0])
+        assert "plt.show()\n    plt.close(fig)" in wrapper
+
+
+def _celula_codigo_contendo(fragment):
+    return next(cell.source for cell in build_notebook.build().cells
+                if cell.cell_type == "code" and fragment in cell.source)
+
+
+def test_bootstrap_local_nao_instala_sem_repositorio(monkeypatch, tmp_path):
+    import subprocess
+
+    source = _celula_codigo_contendo("def _find_repo_root(")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(sys.modules, "google.colab", raising=False)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Bootstrap local não pode clonar ou instalar pacotes.")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    with pytest.raises(RuntimeError, match="Raiz do repositório não encontrada"):
+        exec(source, {})
+
+
+def test_bootstrap_local_precede_src_e_notebooks(monkeypatch):
+    root = Path(build_notebook.__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    exec(_celula_codigo_contendo("def _find_repo_root("), {})
+    assert sys.path[:2] == [str(root / "notebooks"), str(root / "src")]
+
+
+def test_celula_csv_confere_sem_sobrescrever(tmp_path, capsys):
+    source = _celula_codigo_contendo("dataset = synthetic_data.generate_comparador(")
+    frame = pd.DataFrame({"valor": [1, 2]})
+
+    def write_csv(data, path):
+        data.to_csv(path, index=False)
+
+    generator = SimpleNamespace(
+        generate_comparador=lambda **kw: SimpleNamespace(
+            frame=frame, p_true=[0.1, 0.9],
+            meta={"match_ratio_realized": 0.5, "true_slope": 1, "true_intercept": -1},
+        ),
+        to_comparador_csv=write_csv,
+    )
+    namespace = {"synthetic_data": generator, "SEED": 42, "DATA_DIR": tmp_path,
+                 "REPO_ROOT": tmp_path, "Path": Path}
+    exec(source, namespace)
+    assert "arquivo criado" in capsys.readouterr().out
+    path = tmp_path / "comparador_sintetico.csv"
+    # A leitura de texto deve normalizar CRLF, sem tocar no arquivo existente.
+    path.write_bytes(b"valor\r\n1\r\n2\r\n")
+    before = path.read_bytes()
+    exec(source, namespace)
+    assert path.read_bytes() == before
+    assert "conferido e preservado" in capsys.readouterr().out
+    path.write_text("valor\n3\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="CSV versionado difere"):
+        exec(source, namespace)
+    assert path.read_text(encoding="utf-8") == "valor\n3\n"
+
+
+def test_ipywidgets_nao_importado_no_notebook() -> None:
+    """Imports opcionais ficam no helper, não nas células do notebook."""
+    for i, cell in enumerate(_carregar_notebook().cells):
+        if cell.cell_type == "code":
+            assert not re.search(
+                r"\b(?:import\s+ipywidgets\b|from\s+ipywidgets\b)", cell.source
+            ), f"Import direto de ipywidgets na célula {i}."
+
+
+def test_custos_nao_hardcoded() -> None:
+    padroes = [
+        r"CUSTO_FP\s*,\s*CUSTO_FN\s*=\s*\d", r'"false_positive"\s*:\s*\d',
+        r"c_fp\s*=\s*\d", r"c_fn\s*=\s*\d", r"c_llm\s*=\s*\d",
+        r"false_positive(_cost)?\s*=\s*\d", r"false_negative(_cost)?\s*=\s*\d",
+        r"Costs\([^)]*\d",
+    ]
+    for i, cell in enumerate(_carregar_notebook().cells):
+        if cell.cell_type == "code":
+            for padrao in padroes:
+                assert not re.search(padrao, _sem_comentarios(cell.source)), (
+                    f"Custo fixado no código da célula {i}: {padrao}"
+                )
+
+
+def test_sem_travessao_no_markdown() -> None:
+    for i, cell in enumerate(_carregar_notebook().cells):
+        if cell.cell_type == "markdown":
+            assert "—" not in cell.source, f"Travessão no markdown da célula {i}."
+
+
+def test_details_com_summary_e_espaco_para_renderizar_markdown() -> None:
+    """Blocos recolhíveis precisam de fechamento e respiro para Markdown/LaTeX."""
+    for i, cell in enumerate(_carregar_notebook().cells):
+        if (cell.cell_type != "markdown"
+                or not re.search(r"<details(?:\s+open)?>", cell.source)):
+            continue
+        fonte = cell.source
+        quantidade = len(re.findall(r"<details(?:\s+open)?>", fonte))
+        assert quantidade == fonte.count("</details>"), f"Fechamento na célula {i}."
+        assert quantidade == fonte.count("<summary>"), f"Resumo na célula {i}."
+        assert quantidade == fonte.count("</summary>"), f"Fim do resumo na célula {i}."
+        assert quantidade == len(re.findall(r"</summary>\r?\n[ \t]*\r?\n", fonte)), (
+            f"Falta linha em branco após </summary> na célula {i}."
+        )
+        assert quantidade == len(re.findall(r"\r?\n[ \t]*\r?\n</details>", fonte)), (
+            f"Falta linha em branco antes de </details> na célula {i}."
+        )
+
+
+def _sem_comentarios(source):
+    return "\n".join(line for line in source.splitlines()
+                     if not line.lstrip().startswith("#"))
+
+
+def _conferir_blocos_simples(secao):
+    assert secao.count("🧸") >= 8
+    for subsection in re.split(r"(?m)^### ", secao)[1:]:
+        if re.search(r"<details(?:\s+open)?>", subsection):
+            assert re.search(r"(?m)^>\s*🧸", subsection), subsection.splitlines()[0]
+
+
+def test_calibracao_tem_explicacoes_bem_simples() -> None:
+    """A seção de calibração abre espaço explícito para quem começa do zero."""
+    fontes: list[str] = []
+    na_calibracao = False
+    for cell in _carregar_notebook().cells:
+        if cell.cell_type != "markdown":
+            continue
+        if "## 9. Calibração" in cell.source:
+            na_calibracao = True
+        if "## 10. " in cell.source:
+            break
+        if na_calibracao:
+            fontes.append(cell.source)
+    _conferir_blocos_simples("\n".join(fontes))
+
+
+def test_avaliacao_held_out_tem_explicacoes_bem_simples() -> None:
+    """A avaliação e o caminho ML também acolhem quem começa do zero."""
+    markdown = "\n".join(
+        cell.source for cell in _carregar_notebook().cells
+        if cell.cell_type == "markdown"
+    )
+    secao_13 = markdown.split("## 13.", 1)[1].split("## 14.", 1)[0]
+    _conferir_blocos_simples(secao_13)

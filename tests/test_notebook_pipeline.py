@@ -443,12 +443,13 @@ def test_tst_3_2_b_vigilancia_recall_media(df_loaded):
 
 
 def test_tst_3_2_c_row_split_nao_deflaciona(df_loaded):
-    """TST3.2.c — split ``row`` não deve produzir métricas *menores* que o split
-    group-aware (em record linkage o vazamento do ``row`` tende a inflar, nunca a
-    deflacionar). Neste dataset sintético os grupos COMPREC/REFREC são quase todos
-    de tamanho 1, então o efeito é desprezível e os splits ficam ~iguais; usamos
-    tolerância para refletir essa honestidade empírica em vez de afirmar inflação
-    forte que os dados não sustentam (ver markdown 13.3 do notebook)."""
+    """TST3.2.c: compara ``row`` e grupos com tolerância, não exige inflação.
+
+    Há linhas com COMPREC/REFREC compartilhados (medidas na §13.3 do notebook),
+    mas o gerador sorteia features independentemente do ID. Assim os splits podem
+    ficar quase iguais sem demonstrar que vazamento é inofensivo em dados reais.
+    A tolerância não é uma garantia de ordenação das métricas entre splits.
+    """
     rows = []
     for split_by in ["row", "comprec"]:
         res = evaluate_v3_dataframe(
