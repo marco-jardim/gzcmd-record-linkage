@@ -96,7 +96,7 @@ Use as falas como apoio. Não leia código nem todas as colunas das tabelas.
       | Random Forest | 1,7013 | 2,4166 |
       | XGBoost | 1,7465 | 3,2434 |
 
-    - **O que a plateia deve perceber:** no teste único, RF não se separa do Platt além do ruído em AUC/Brier; XGB perde nessas medidas. Vantagem probabilística por construção não garante menor custo sob travas e revisor suposto: no ranking conferido, Platt custa menos em vigilância, RF ligeiramente menos em confirmação (diferença menor que a soma dos desvios), e XGB custa mais nos dois. Isso não prova inferioridade geral do aprendizado de máquina.
+    - **O que a plateia deve perceber:** no teste único, Platt fica mais perto de p* e leia a linha "Leitura desta execução" do bootstrap (na referência, RF não se separa do Platt e XGB perde em AUC/Brier). Vantagem probabilística por construção não garante menor custo sob travas e revisor suposto: a diferença de custo entre Platt e RF fica dentro da variação entre sorteios, e a ordem exata entre os três pode mudar de uma máquina para outra. Isso não prova inferioridade geral do aprendizado de máquina.
 
 15. **16. Conclusões e limitações** | **1 min**
     - **Dizer:** “Esta aula mostra como a decisão nasce, não promete desempenho em serviço. Há três limites centrais: dados sintéticos feitos com uma curva logística, âncoras implementadas só no notebook e revisor LLM apenas simulado.”

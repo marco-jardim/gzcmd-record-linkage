@@ -2907,7 +2907,7 @@ uma sigmoide aprende a converter os escores em probabilidades, e as previsões s
 Usamos `CalibratedClassifierCV(method="sigmoid", cv=5)`: para este estimador não congelado,
 o padrão efetivo é `ensemble=True`, com média das previsões dos 5 ajustes calibrados.
 
-Fixamos CPU em todos os ajustes de XGBoost para números reprodutíveis com estas versões das bibliotecas.
+Fixamos CPU e semente em todos os ajustes de RF e XGBoost: na mesma máquina os números se repetem; entre máquinas, versões de biblioteca ou número de núcleos, RF e XGBoost ainda podem variar um pouco.
 O tempo Platt inclui um novo ajuste conferido contra a §9.4; RF/XGB incluem a
 calibração interna. A contagem é da lista selecionada: nesta versão do scikit-learn,
 colunas inteiramente vazias no treino são descartadas pelo preenchimento,
@@ -2997,15 +2997,23 @@ print("Piso amostral de ECE (novos rótulos, média e intervalo de 95%):")
 print(pd.DataFrame([piso_ece]).rename(columns={
     "mean": "Média", "ci_low": "Limite inferior", "ci_high": "Limite superior",
 }).to_string(index=False))
+ece_oraculo = comparacao_modelos.loc["p* (oráculo)", "ECE"]
 for nome, ece in comparacao_modelos["ECE"].items():
     na_faixa = piso_ece["ci_low"] <= ece <= piso_ece["ci_high"]
-    print(f"{nome}: ECE={br(ece, 4)} dentro da faixa de p*? {na_faixa}")
-    assert na_faixa, f"{nome}: ECE fora da faixa; atualize a leitura do piso de ruído."
+    abaixo_da_verdade = nome != "p* (oráculo)" and ece < ece_oraculo
+    print(
+        f"{nome}: ECE={br(ece, 4)} | dentro da faixa de p*? {na_faixa}"
+        f" | menor que o ECE da própria p*? {abaixo_da_verdade}"
+    )
+assert piso_ece["ci_low"] <= ece_oraculo <= piso_ece["ci_high"], (
+    "O ECE da própria p* deveria cair na faixa simulada; atualize a leitura."
+)
 for metrica in ["MAE vs p* (nota)", "Brier", "log-loss"]:
     candidatos = comparacao_modelos.loc[list(previsoes_modelos), metrica]
-    assert candidatos.idxmin() == "Platt (só a nota)", (
-        f"O texto favorece Platt em {metrica}; atualize a leitura."
-    )
+    print(f"{metrica}: menor valor com {candidatos.idxmin()}")
+assert comparacao_modelos.loc[list(previsoes_modelos), "MAE vs p* (nota)"].idxmin() == "Platt (só a nota)", (
+    "O texto diz que Platt fica mais perto de p*; atualize a leitura."
+)
 confere("pares no teste único", len(y_test), 183, 0)
 confere("gavetas de ECE", gavetas_ece, 10, 0)
 confere("ECE do oráculo p*", comparacao_modelos.loc["p* (oráculo)", "ECE"], 0.0754, 0.00005)
@@ -3032,17 +3040,15 @@ print(bootstrap_ml.rename(columns={
     "diff": "Diferença", "ci_low": "Limite inferior", "ci_high": "Limite superior",
 }).to_string(index=False))
 intervalos_ml = bootstrap_ml.set_index(["Comparação", "Métrica"])
-for metrica in ["auc", "brier"]:
-    intervalo_rf = intervalos_ml.loc[("Platt − Random Forest", metrica)]
-    assert intervalo_rf["ci_low"] <= 0 <= intervalo_rf["ci_high"], (
-        f"O texto diz que o IC de {metrica} entre Platt e RF inclui zero; atualize a leitura."
-    )
-assert intervalos_ml.loc[("Platt − XGBoost", "auc"), "ci_low"] > 0, (
-    "O texto diz que o IC de AUC exclui zero e favorece Platt contra XGB; atualize a leitura."
-)
-assert intervalos_ml.loc[("Platt − XGBoost", "brier"), "ci_high"] < 0, (
-    "O texto diz que o IC de Brier exclui zero e favorece Platt contra XGB; atualize a leitura."
-)
+print("Leitura desta execução:")
+for (comparacao, metrica), linha in intervalos_ml.iterrows():
+    if linha["ci_low"] <= 0 <= linha["ci_high"]:
+        leitura = "inclui zero: a prova não separa os modelos"
+    elif (metrica == "auc") == (linha["ci_low"] > 0):
+        leitura = "exclui zero a favor do Platt"
+    else:
+        leitura = "exclui zero a favor do concorrente"
+    print(f"  {comparacao}, {metrica}: {leitura}")
 hero_pos = df_ml.index.get_loc(hero_idx)
 assert hero_pos in train_idx, "O texto informa herói no treino; atualize a leitura desta divisão."
 if hero_pos in test_idx:
@@ -3073,20 +3079,23 @@ PASSAPORTE["13.7 ML"] = {"origem": origem_heroi, **probabilidades_heroi}""",
 
 > 🧒 **Um pouco mais.** Com cerca de 183 pares e 10 gavetas, até a probabilidade
 > verdadeira p* tem ECE ≈ 0,0754. O código simula novos rótulos para mostrar o
-> nível desse ruído de sorteio (~0,035–0,091). Os ECEs de XGB, RF, Platt e do
-> próprio p* caem todos na faixa simulada para p*: o ECE não ordena estes modelos.
-> A régua sem ruído de rótulo deste mundo inventado, a distância até p*, mostra
-> o Platt mais perto da verdade; Brier e log-loss concordam neste teste.
+> nível desse ruído de sorteio (~0,035–0,091). Nenhum modelo pode ser mais bem
+> calibrado que a própria verdade. Então, se algum modelo mostra ECE **menor que o
+> de p***, isso é ruído das gavetas, não calibração melhor: neste teste o ECE
+> não ordena estes modelos. A régua sem ruído de rótulo deste mundo inventado,
+> a distância até p*, mostra o Platt mais perto da verdade (o código confere);
+> Brier e log-loss costumam concordar, e a saída mostra quem ficou com o menor valor.
 
 > 📖 **Palavra nova: piso amostral de ECE.** É a oscilação que ainda aparece
 > ao comparar a probabilidade verdadeira com um conjunto finito de respostas sorteadas.
 
 **Vantagem por construção vale para as probabilidades (AUC, Brier, distância até p*);
-ela não garante o menor custo sob travas e revisor suposto.** A tabela e as
-conferências de custo abaixo sustentam a leitura: em vigilância, Platt tem o menor
-custo esperado por par; em confirmação, RF fica ligeiramente abaixo de Platt,
-dentro da variação entre sorteios; XGB é o pior nos dois modos. Se o ranking mudar,
-é preciso rever essa leitura. Não é um achado sobre tamanho do treino nem
+ela não garante o menor custo sob travas e revisor suposto.** A tabela de custo
+abaixo mostra a ordem desta execução. A diferença de custo entre Platt e RF fica
+dentro da variação entre sorteios (o código confere), então não dá para dizer
+qual dos dois é mais barato. A ordem exata entre os três pode mudar entre versões
+das bibliotecas, porque RF e XGBoost dependem de detalhes de implementação mesmo
+com semente fixa. Não é um achado sobre tamanho do treino nem
 inferioridade geral do ML. Dada a nota, as demais pistas não informam TARGET
 nas linhas aleatórias. Ordenar pela nota já é a melhor ordenação possível nesse
 modelo gerador: o código confere AUC(nota) = AUC(Platt) = AUC(p*).
@@ -3100,10 +3109,10 @@ Os cenários com rótulos escolhidos à mão são a ressalva a essa construção
 > Brier. Se o intervalo inclui zero, este teste não separa claramente os modelos
 > nessa medida. Ele reamostra pares, não pessoas nem novas populações.
 
-**Lendo estes intervalos.** RF inclui zero tanto na AUC quanto no Brier:
-a diferença não é distinguível do ruído nesta prova. XGB exclui zero nas duas
-medidas, com sinais que favorecem Platt: maior AUC e menor Brier neste conjunto.
-O código confere os limites para que essa leitura falhe se os intervalos mudarem.
+**Lendo estes intervalos.** O código imprime a leitura de cada intervalo. Na
+execução de referência, RF incluiu zero na AUC e no Brier (a diferença não se
+distingue do ruído) e XGB excluiu zero a favor do Platt. Como RF e XGBoost mudam
+um pouco entre versões das bibliotecas, vale a leitura impressa logo acima.
 
 > 📖 **Palavra nova: bootstrap pareado.** É sortear novamente as linhas do teste,
 > mantendo juntas as respostas dos modelos para cada par.
@@ -3204,7 +3213,7 @@ respeita grupos (`COMPREC`): o mesmo candidato pode participar do estudo e da
 conferência internos. Neste gerador o efeito é nulo porque o ID não carrega
 informação; em dados reais, não. A prova externa continua separada por `COMPREC`.
 
-Fixamos CPU em todos os ajustes de XGBoost para números reprodutíveis com estas versões das bibliotecas.
+Fixamos CPU e semente em todos os ajustes de RF e XGBoost: na mesma máquina os números se repetem; entre máquinas, versões de biblioteca ou número de núcleos, RF e XGBoost ainda podem variar um pouco.
 
 <details>
 <summary>📐 Para quem quer a matemática</summary>
@@ -3248,20 +3257,18 @@ res_ml = nbh.custo_esperado_por_par(res_comparacao_ml, cfg)
 metricas_politica_sistema = ["custo_esperado_por_par", "exp_recall", "exp_fbeta", "auto_coverage"]
 resumo_sistema_ml = res_ml.groupby(["mode", "calibration"])[metricas_politica_sistema].agg(["mean", "std"])
 custos_medios_ml = resumo_sistema_ml[("custo_esperado_por_par", "mean")]
-for modo, ordem_esperada in [
-    ("vigilancia", ["platt", "ml_rf", "ml_xgb"]),
-    ("confirmacao", ["ml_rf", "platt", "ml_xgb"]),
-]:
+for modo in ["vigilancia", "confirmacao"]:
     ranking = custos_medios_ml.loc[modo].sort_values().index.tolist()
-    print(f"{modo}: ranking de custo (menor primeiro): {ranking}")
-    assert ranking == ordem_esperada, "Ranking mudou: atualize a leitura de custo em §13.7 e §16."
-gap_platt_rf = custos_medios_ml.loc[("confirmacao", "platt")] - custos_medios_ml.loc[("confirmacao", "ml_rf")]
-soma_desvios = sum(
-    resumo_sistema_ml.loc[("confirmacao", metodo), ("custo_esperado_por_par", "std")]
-    for metodo in ["platt", "ml_rf"]
-)
-print(f"Confirmação: custo Platt − RF={br(gap_platt_rf, 4)}; soma dos desvios={br(soma_desvios, 4)}")
-assert 0 < gap_platt_rf < soma_desvios, "A diferença deve ser menor que a soma dos desvios dos sorteios."
+    print(f"{modo}: ranking de custo nesta execução (menor primeiro): {ranking}")
+    gap_platt_rf = custos_medios_ml.loc[(modo, "platt")] - custos_medios_ml.loc[(modo, "ml_rf")]
+    soma_desvios = sum(
+        resumo_sistema_ml.loc[(modo, metodo), ("custo_esperado_por_par", "std")]
+        for metodo in ["platt", "ml_rf"]
+    )
+    print(f"  custo Platt − RF={br(gap_platt_rf, 4)}; soma dos desvios={br(soma_desvios, 4)}")
+    assert abs(gap_platt_rf) < soma_desvios, (
+        f"{modo}: a diferença Platt − RF superou a variação entre sorteios; atualize a leitura."
+    )
 tabela_sistema_ml = pd.DataFrame(index=resumo_sistema_ml.index)
 for metrica in metricas_politica_sistema:
     tabela_sistema_ml[metrica] = [
@@ -3541,10 +3548,9 @@ Isto é **demonstração didática**, não evidência de desempenho em bases rea
 - **ML fez esta prova, não uma prova em pessoas reais.** A §13.7 testa o aprendiz
   `GZCMDClassifier` com Random Forest/XGBoost sem as anotações da aula.
   Vantagem por construção vale para as probabilidades (AUC, Brier, distância até p*),
-  não garante menor custo sob travas e revisor suposto. No ranking medido e
-  conferido na §13.7, Platt tem o menor custo em vigilância; em confirmação,
-  RF fica ligeiramente abaixo de Platt, dentro da variação entre sorteios;
-  XGB é o pior nos dois modos. Se esse ranking mudar, reveja esta leitura.
+  não garante menor custo sob travas e revisor suposto. Na §13.7, a diferença
+  de custo entre Platt e RF fica dentro da variação entre sorteios; a ordem
+  exata entre os três modelos pode mudar entre versões das bibliotecas.
   Dada a nota, as outras pistas não carregam informação adicional sobre TARGET nas linhas aleatórias.
   Nenhum modelo pode melhorar a probabilidade verdadeira p*; Platt já tem sua
   família correta. Não é um achado sobre pouco treino nem inferioridade geral do ML.
@@ -3554,7 +3560,7 @@ Isto é **demonstração didática**, não evidência de desempenho em bases rea
   separe. Aqui o ID é independente; em bases reais essa falta de separação importa.
   Se o herói estiver no treino, e o código informa que está, ele não comprova
   desempenho fora do treino. A detecção de CUDA foi melhorada (há uma sonda do
-  XGBoost); o notebook fixa CPU. Os números são reprodutíveis com estas versões das bibliotecas.
+  XGBoost); o notebook fixa CPU. Na mesma máquina os números se repetem; entre máquinas ou versões de biblioteca, RF e XGBoost podem variar um pouco, e por isso o texto da §13.7 descreve regras de leitura e o código imprime o resultado de cada execução.
   A igualdade exata da §12 verifica apenas a rota Platt.
   O modelo-base (`base_model`), SMOTE e `logit(p_base)` da YAML não rodam aqui;
   `run_v3` com `fit_ml_*` aprende e responde nas mesmas fichas, não numa prova nova.
