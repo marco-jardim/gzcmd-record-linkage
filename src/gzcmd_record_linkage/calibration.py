@@ -9,6 +9,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+from scipy.special import logsumexp
 
 from .config import AnchorFitParams, CalibrationConfig
 
@@ -135,7 +136,16 @@ def fit_anchor_platt(
     max_iter: int = 100,
     tol: float = 1e-10,
 ) -> PlattModel:
-    """Ajusta sigmoide global por âncoras de escore, sem usar rótulos."""
+    """Ajusta sigmoide global da nota pelas restrições de média nas âncoras.
+
+    Resolve, sem rótulos, E[σ(αs+β) | s ≥ s_plus] ≈ r_plus e
+    E[σ(αs+β) | s < s_minus] ≈ r_minus, minimizando os resíduos em escala
+    logit das duas médias mais ``l2 * (α² + β²)``, com 0 ≤ α ≤ alpha_max
+    (monotonia imposta no ajuste) e |β| ≤ beta_max. L2 e limites podem
+    afastar as médias dos alvos; nesse caso há aviso em log. Os alvos são
+    parâmetros assumidos, não taxas estimadas aqui. Calibra a nota_final;
+    não substitui a calibração supervisionada de outra probabilidade.
+    """
     params = AnchorFitParams(
         s_plus=s_plus, s_minus=s_minus, r_plus=r_plus, r_minus=r_minus,
         min_anchor_size=min_anchor_size, min_pos_count=min_pos_count,
@@ -157,26 +167,80 @@ def fit_anchor_platt(
         logger.warning("%s; anchor calibration not fitted", message)
         raise _InsufficientAnchors(message)
 
+    anchors = (
+        (positive, float(np.log(r_plus / (1.0 - r_plus)))),
+        (negative, float(np.log(r_minus / (1.0 - r_minus)))),
+    )
+
     def objective(weights: np.ndarray) -> tuple[float, np.ndarray]:
-        alpha, beta = weights
         loss = l2 * float(weights @ weights)
-        gradient = 2 * l2 * weights
-        # Each anchor contributes its mean CE, irrespective of its size.
-        for scores, target in ((positive, r_plus), (negative, r_minus)):
-            z = alpha * scores + beta
-            loss += float(np.mean(np.logaddexp(0, z) - target * z))
-            residual = _sigmoid(z) - target
-            gradient += np.array([np.mean(residual * scores), np.mean(residual)])
+        gradient = 2.0 * l2 * weights
+        # One residual per anchor mean, so neither set dominates by its size.
+        for scores, target_logit in anchors:
+            value, value_gradient = _logit_mean_and_gradient(scores, weights)
+            residual = value - target_logit
+            loss += residual * residual
+            gradient = gradient + 2.0 * residual * value_gradient
         return loss, gradient
 
+    bounds = [(0.0, alpha_max), (-beta_max, beta_max)]
+    # Two-point guess: the exact solution if every score sat at its anchor mean.
+    spread = float(positive.mean() - negative.mean())
+    alpha0 = (anchors[0][1] - anchors[1][1]) / spread
+    alpha0 = float(np.clip(alpha0, 0.0, alpha_max))
+    beta0 = anchors[0][1] - alpha0 * float(positive.mean())
+    beta0 = float(np.clip(beta0, -beta_max, beta_max))
     result = minimize(
-        objective, np.zeros(2), jac=True, method="L-BFGS-B",
-        bounds=[(-alpha_max, alpha_max), (-beta_max, beta_max)],
-        options={"maxiter": max_iter, "ftol": tol, "gtol": tol},
+        objective, np.array([alpha0, beta0]), jac=True, method="L-BFGS-B",
+        bounds=bounds, options={"maxiter": max_iter, "ftol": tol, "gtol": tol},
     )
-    if not result.success or not np.isfinite(result.x).all():
+    if not np.isfinite(result.x).all():
         raise RuntimeError(f"Failed to fit anchor_platt: {result.message}")
-    return PlattModel(intercept=float(result.x[1]), slope=float(result.x[0]))
+    model = PlattModel(intercept=float(result.x[1]), slope=float(result.x[0]))
+
+    residuals = [
+        _logit_mean_and_gradient(scores, result.x)[0] - target_logit
+        for scores, target_logit in anchors
+    ]
+    if not result.success or max(abs(r) for r in residuals) > 1e-3:
+        mean_plus, mean_minus = anchor_means(
+            pd.Series(x), model=model, s_plus=s_plus, s_minus=s_minus
+        )
+        logger.warning(
+            "anchor_platt targets not met exactly (bounds/L2/optimizer: %s): "
+            "mean A+=%.6f (target %.6f), mean A-=%.6f (target %.6f)",
+            result.message, mean_plus, r_plus, mean_minus, r_minus,
+        )
+    return model
+
+
+def _logit_mean_and_gradient(
+    scores: np.ndarray, weights: np.ndarray
+) -> tuple[float, np.ndarray]:
+    """Calcula logit da média da sigmoide e seu gradiente, de forma estável."""
+    z = weights[0] * scores + weights[1]
+    log_p = -np.logaddexp(0.0, -z)
+    log_q = -np.logaddexp(0.0, z)
+    log_sum_p = logsumexp(log_p)
+    log_sum_q = logsumexp(log_q)
+    # 1 - mean(p) = mean(1 - p), so the sample sizes cancel.
+    value = float(log_sum_p - log_sum_q)
+    p, q = np.exp(log_p), np.exp(log_q)
+    dz = np.exp(log_p - log_sum_p) * q + np.exp(log_q - log_sum_q) * p
+    return value, np.array([float(dz @ scores), float(dz.sum())])
+
+
+def anchor_means(
+    nota: pd.Series,
+    *,
+    model: PlattModel,
+    s_plus: float = 9.0,
+    s_minus: float = 5.0,
+) -> tuple[float, float]:
+    """Mede as médias da sigmoide (sem clip) em A+ e A-."""
+    x = pd.to_numeric(nota, errors="coerce").to_numpy(dtype=np.float64)
+    p = _sigmoid(model.intercept + model.slope * x)
+    return float(p[x >= s_plus].mean()), float(p[x < s_minus].mean())
 
 
 def fit_calibration_from_df(
@@ -185,7 +249,7 @@ def fit_calibration_from_df(
     config: CalibrationConfig,
     target_col: str = "TARGET",
 ) -> PlattModel:
-    """Seleciona o ajuste global configurado; by_band é ignorado como no Platt."""
+    """Seleciona o ajuste global da nota; by_band é ignorado como no Platt."""
     if config.method == "anchor_platt":
         try:
             return fit_anchor_platt(get_nota_series(df), **asdict(config.anchor_platt))

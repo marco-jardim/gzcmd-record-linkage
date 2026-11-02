@@ -78,7 +78,8 @@ bands:
 
 anchors:
   # Anchor sets for label-free calibration
-  # Thesis anchor validation: 99.2% true matches above 9; 0.2% below 5.
+  # Targets are ASSUMED parameters taken from the thesis anchor table (99.2% / 0.2%);
+  # they are not validated on the data being calibrated.
   pos_anchor:
     rule: "nota_final >= 9.0"
     target_mean_probability: 0.992
@@ -99,13 +100,17 @@ base_model:
 
 calibration:
   # Online / rolling calibration WITHOUT human labels.
-  method: "anchor_platt"   # sigmoid(alpha*nota_final+beta), fitted using anchors
+  # anchor_platt calibrates nota_final itself; it does not replace the supervised
+  # calibration of another model's probability.
+  method: "anchor_platt"   # sigmoid(alpha*nota_final+beta), fitted to anchor means
   by_band: true            # currently ignored: both Platt methods fit globally
   fallback: "error"        # optional "platt" requires labels if anchors are scarce
   anchor_platt:
-    l2: 1.0e-6             # mean CE + l2*(alpha^2+beta^2), including intercept
-    alpha_max: 10.0
-    beta_max: 50.0
+    # Minimizes squared logit residuals of the two anchor means
+    # + l2*(alpha^2+beta^2); L2 and bounds may move the means off the targets.
+    l2: 1.0e-6
+    alpha_max: 10.0        # 0 <= alpha <= alpha_max (monotone in nota_final)
+    beta_max: 50.0         # |beta| <= beta_max
     min_anchor_size: 30
   clip_min: 1.0e-6
   clip_max: 0.999999

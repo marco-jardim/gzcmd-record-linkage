@@ -382,9 +382,7 @@ def _load_evaluation_defaults(data: Mapping[str, Any]) -> EvaluationDefaults:
     seeds_list: list[int]
     if isinstance(raw_seeds, int):
         seeds_list = [int(raw_seeds)]
-    elif isinstance(raw_seeds, list):
-        seeds_list = [int(x) for x in raw_seeds]
-    elif isinstance(raw_seeds, tuple):
+    elif isinstance(raw_seeds, (list, tuple)):
         seeds_list = [int(x) for x in raw_seeds]
     else:
         raise TypeError("evaluation.seeds must be an int or a list of ints")

@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 import yaml
 
+from gzcmd_record_linkage import calibration
 from gzcmd_record_linkage.calibration import (
+    anchor_means,
     compute_p_cal,
     fit_anchor_platt,
     fit_calibration_from_df,
@@ -42,6 +44,10 @@ def test_anchor_target_means_and_label_independence(synthetic_scores):
     probabilities = predict_platt(scores, model=model)
     assert probabilities[scores >= 9].mean() == pytest.approx(0.992, abs=0.02)
     assert probabilities[scores < 5].mean() == pytest.approx(0.002, abs=0.02)
+    # The fit solves the mean equations themselves, not only to within 0.02.
+    mean_plus, mean_minus = anchor_means(scores, model=model)
+    assert mean_plus == pytest.approx(0.992, abs=1e-4)
+    assert mean_minus == pytest.approx(0.002, abs=1e-5)
     config = CalibrationConfig(method="anchor_platt")
     assert fit_calibration_from_df(df.drop(columns="TARGET"), config=config) == model
     assert fit_calibration_from_df(
@@ -85,12 +91,37 @@ def test_explicit_supervised_fallback(synthetic_scores, caplog):
         fit_calibration_from_df(df, config=replace(config, fallback="error"))
 
 
-def test_anchor_parameter_bounds(synthetic_scores):
-    model = fit_anchor_platt(
-        synthetic_scores["nota_final"], alpha_max=0.1, beta_max=0.5
-    )
-    assert abs(model.slope) <= 0.1
+def test_monotonicity_is_a_fit_constraint(monkeypatch, synthetic_scores):
+    seen = {}
+    real_minimize = calibration.minimize
+
+    def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return real_minimize(*args, **kwargs)
+
+    monkeypatch.setattr(calibration, "minimize", spy)
+    model = fit_anchor_platt(synthetic_scores["nota_final"], alpha_max=3.0)
+    assert seen["bounds"][0] == (0.0, 3.0)
+    assert 0.0 <= model.slope <= 3.0
+
+
+def test_anchor_parameter_bounds(synthetic_scores, caplog):
+    scores = synthetic_scores["nota_final"]
+    model = fit_anchor_platt(scores, alpha_max=0.1, beta_max=0.5)
+    assert 0.0 <= model.slope <= 0.1
     assert abs(model.intercept) <= 0.5
+    # Active bounds keep the means away from the targets, and that is logged.
+    mean_plus, mean_minus = anchor_means(scores, model=model)
+    assert abs(mean_plus - 0.992) > 0.1 or abs(mean_minus - 0.002) > 0.1
+    assert "targets not met exactly" in caplog.text
+
+
+def test_strong_l2_moves_means_off_targets(synthetic_scores, caplog):
+    scores = synthetic_scores["nota_final"]
+    weak = anchor_means(scores, model=fit_anchor_platt(scores))
+    strong = anchor_means(scores, model=fit_anchor_platt(scores, l2=1.0))
+    assert abs(strong[0] - 0.992) > abs(weak[0] - 0.992)
+    assert "targets not met exactly" in caplog.text
 
 
 def test_config_dispatch_and_runner_on_synthetic_csv(tmp_path):
