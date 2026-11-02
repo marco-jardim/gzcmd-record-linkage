@@ -78,15 +78,17 @@ bands:
 
 anchors:
   # Anchor sets for label-free calibration
-  # Targets are ASSUMED parameters taken from the thesis anchor table (99.2% / 0.2%);
-  # they are not validated on the data being calibrated.
+  # Targets measured on the thesis dataset (data/COMPARADORSEMIDENT.csv,
+  # scripts/validar_ancoras.py in phd-research): A+ n=95 purity 0.979;
+  # A- n=39,981 positive rate 0.0001.
+  # They are dataset-specific assumptions for any other data.
   pos_anchor:
     rule: "nota_final >= 9.0"
-    target_mean_probability: 0.992
+    target_mean_probability: 0.979
     min_count: 30
   neg_anchor:
     rule: "nota_final < 5.0"
-    target_mean_probability: 0.002
+    target_mean_probability: 0.0001
     min_count: 30
 
 base_model:

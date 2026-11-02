@@ -64,8 +64,8 @@ class PlattFitParams:
 class AnchorFitParams:
     s_plus: float = 9.0
     s_minus: float = 5.0
-    r_plus: float = 0.992
-    r_minus: float = 0.002
+    r_plus: float = 0.979
+    r_minus: float = 0.0001
     min_anchor_size: int = 30
     min_pos_count: int = 30
     min_neg_count: int = 30

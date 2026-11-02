@@ -42,12 +42,12 @@ def test_anchor_target_means_and_label_independence(synthetic_scores):
     assert df.loc[scores < 5, "TARGET"].mean() < 0.01
     model = fit_anchor_platt(scores)
     probabilities = predict_platt(scores, model=model)
-    assert probabilities[scores >= 9].mean() == pytest.approx(0.992, abs=0.02)
-    assert probabilities[scores < 5].mean() == pytest.approx(0.002, abs=0.02)
+    assert probabilities[scores >= 9].mean() == pytest.approx(0.979, abs=0.02)
+    assert probabilities[scores < 5].mean() == pytest.approx(0.0001, abs=0.02)
     # The fit solves the mean equations themselves, not only to within 0.02.
     mean_plus, mean_minus = anchor_means(scores, model=model)
-    assert mean_plus == pytest.approx(0.992, abs=1e-4)
-    assert mean_minus == pytest.approx(0.002, abs=1e-5)
+    assert mean_plus == pytest.approx(0.979, abs=1e-4)
+    assert mean_minus == pytest.approx(0.0001, rel=0.05)
     config = CalibrationConfig(method="anchor_platt")
     assert fit_calibration_from_df(df.drop(columns="TARGET"), config=config) == model
     assert fit_calibration_from_df(
@@ -112,7 +112,7 @@ def test_anchor_parameter_bounds(synthetic_scores, caplog):
     assert abs(model.intercept) <= 0.5
     # Active bounds keep the means away from the targets, and that is logged.
     mean_plus, mean_minus = anchor_means(scores, model=model)
-    assert abs(mean_plus - 0.992) > 0.1 or abs(mean_minus - 0.002) > 0.1
+    assert abs(mean_plus - 0.979) > 0.1 or abs(mean_minus - 0.0001) > 0.1
     assert "targets not met exactly" in caplog.text
 
 
@@ -120,7 +120,7 @@ def test_strong_l2_moves_means_off_targets(synthetic_scores, caplog):
     scores = synthetic_scores["nota_final"]
     weak = anchor_means(scores, model=fit_anchor_platt(scores))
     strong = anchor_means(scores, model=fit_anchor_platt(scores, l2=1.0))
-    assert abs(strong[0] - 0.992) > abs(weak[0] - 0.992)
+    assert abs(strong[0] - 0.979) > abs(weak[0] - 0.979)
     assert "targets not met exactly" in caplog.text
 
 
@@ -131,8 +131,8 @@ def test_config_dispatch_and_runner_on_synthetic_csv(tmp_path):
     )
     config = load_config(_config_path())
     assert config.calibration.method == "anchor_platt"
-    assert config.calibration.anchor_platt.r_plus == 0.992
-    assert config.calibration.anchor_platt.r_minus == 0.002
+    assert config.calibration.anchor_platt.r_plus == 0.979
+    assert config.calibration.anchor_platt.r_minus == 0.0001
     df = load_comparador_csv(path)
     model = fit_calibration_from_df(df, config=config.calibration)
     probabilities = compute_p_cal(df, method="anchor_platt", model=model)
