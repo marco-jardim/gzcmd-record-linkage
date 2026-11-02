@@ -1344,13 +1344,17 @@ print("Erro pequeno confirma o ajuste neste jogo, cuja regra foi feita para cabe
 
 > 📖 **Palavra nova: âncora.** É um grupo com probabilidade presumida que serve de referência ao ajuste.
 
-**Exemplo pequeno.** A configuração presume quase certeza nas notas altas
-e quase nenhuma probabilidade nas baixas. São suposições, não respostas conferidas:
+**Exemplo pequeno.** A configuração usa alvos medidos na base da tese
+(`data/COMPARADORSEMIDENT.csv`, por `scripts/validar_ancoras.py` em `phd-research`):
+A+ tem 95 pares e pureza 0,979; A− tem 39.981 pares e taxa positiva 0,0001
+(arredondada de 3/39.981 para manter o alvo maior que zero).
+Esses valores substituem a tabela anterior sem fonte reproduzível.
+Em qualquer outra base, inclusive neste sintético, continuam sendo suposições:
 
 | item | valor na config |
 |---|---|
-| âncora positiva | notas a partir de 9, média-alvo 0,992, mínimo 30 pares |
-| âncora negativa | notas abaixo de 5, média-alvo 0,002, mínimo 30 pares |
+| âncora positiva | notas a partir de 9, média-alvo 0,979, mínimo 30 pares |
+| âncora negativa | notas abaixo de 5, média-alvo 0,0001, mínimo 30 pares |
 | método | `anchor_platt`, ajuste global; `by_band` é ignorado |
 | limitador por janela | mudança máxima de 0,5 em `a` e 0,5 em `b` |
 
@@ -1385,7 +1389,7 @@ não há vazamento de **rótulo**, nem validação numa população externa.
 > É diferente de prometer que nunca vai errar.
 
 > 🧒 **Um pouco mais.** Em vez de respostas duras de sim ou não, o código dá
-> às âncoras as probabilidades presumidas 0,992 e 0,002. Ajusta só com esses pares.
+> às âncoras as probabilidades presumidas 0,979 e 0,0001. Ajusta só com esses pares.
 
 > 📖 **Palavra nova: rótulo suave.** É uma resposta de quase certeza, não de certeza absoluta.
 
@@ -1402,29 +1406,29 @@ em todas as linhas e **81/171** só no treino. Com 81 positivas e 171 negativas,
 ambos os mínimos de 30 são atendidos e o ajuste no treino prossegue. Nesta demonstração,
 usamos todas as notas, inclusive do teste, **sem seus rótulos**.
 O p* médio nas âncoras é **0,9501** (cerca de **0,950**) e **0,0889**:
-as suposições 0,992 e 0,002 não combinam com este mundo inventado.
+as suposições 0,979 e 0,0001 não combinam com este mundo inventado.
 
 | resultado medido | com gabarito do treino (rota B) | com âncoras |
 |---|---|---|
-| inclinação a | 0,9096 | 1,8588 |
-| intercepto b | −5,5296 | −12,8354 |
-| nota que vira 50% (s*) | 6,0789 (cerca de 6,08) | 6,9052 (cerca de 6,91) |
-| probabilidade do herói (se estiver no treino, valor supervisionado é in-sample) | 0,5946 | 0,3201 |
-| erro de promessa (ECE) no teste | 0,0751 | 0,1287 |
-| erro par a par (Brier) no teste | 0,1087 | 0,1390 |
-| distância média até p* (MAE) no teste | 0,0099 | 0,1055 |
+| inclinação a | 0,9096 | 1,8849 |
+| intercepto b | −5,5296 | −13,9969 |
+| nota que vira 50% (s*) | 6,0789 (cerca de 6,08) | 7,4259 (cerca de 7,43) |
+| probabilidade do herói (se estiver no treino, valor supervisionado é in-sample) | 0,5946 | 0,1487 |
+| erro de promessa (ECE) no teste | 0,0751 | 0,1645 |
+| erro par a par (Brier) no teste | 0,1087 | 0,1652 |
+| distância média até p* (MAE) no teste | 0,0099 | 0,1362 |
 
 O herói tem p* **0,5974**; a rota A lhe dá **0,6045**.
 As âncoras pioraram os erros aqui. Isso não é uma regra para todos os dados.
 O resultado ruim das âncoras decorre da inclinação escolhida no gerador (a = 0,85);
 com caudas mais íngremes, a probabilidade verdadeira média nas âncoras ficaria
-mais perto de 0,992/0,002 e o erro das âncoras tenderia a cair (não testado aqui).
+mais perto de 0,979/0,0001 e o erro das âncoras tenderia a cair (não testado aqui).
 
 <details>
 <summary>📐 Para quem quer a matemática</summary>
 
-Só entram os pares-âncora; cada um recebe rótulo suave t: 0,992 nas positivas
-e 0,002 nas negativas. O resto segue 9.2 e 9.3.
+Só entram os pares-âncora; cada um recebe rótulo suave t: 0,979 nas positivas
+e 0,0001 nas negativas. O resto segue 9.2 e 9.3.
 1. **Escolher:** nota ≥ 9,0 ou nota < 5,0. Pares entre 5 e 9 ficam de fora.
 2. **Conferir o mínimo:** com menos de 30 positivas ou 30 negativas, mantemos
    a curva anterior ("congelar"). Abaixo medimos todas as linhas e só o treino.
@@ -1435,24 +1439,25 @@ e 0,002 nas negativas. O resto segue 9.2 e 9.3.
 5. **Newton igual ao anterior:** troque y por t e pese cada termo dos dados por w_i.
 
 **Por que suave?** Com 0 e 1, as âncoras seriam perfeitamente separáveis e,
-sem L2, a curva viraria degrau. Com 0,992 e 0,002, o ajuste tem solução finita.
+sem L2, a curva viraria degrau. Com 0,979 e 0,0001, o ajuste tem solução finita.
 Como as notas variam dentro dos grupos, a curva não consegue dar exatamente
 o alvo a cada linha; encontra o melhor compromisso da multa ponderada.
 
 **Conta de guardanapo, ilustrativa (também inspira o chute inicial do Newton).**
 Se todo um grupo estivesse na sua nota média, teríamos duas equações:
-- logit(0,992) = ln 124 ≈ **4,8203** = a·s̄₊ + b;
-- logit(0,002) ≈ **−6,2126** = a·s̄₋ + b.
+- logit(0,979) = ln(0,979/0,021) ≈ **3,8420** = a·s̄₊ + b;
+- logit(0,0001) = ln(0,0001/0,9999) ≈ **−9,2102** = a·s̄₋ + b.
 
-Com médias **ilustrativas** 9,5 e 3,0: a = 11,0329 ÷ 6,5 ≈ **1,6974** (cerca de **1,70**);
-b = 4,8203 − 1,6974 × 9,5 ≈ **−11,3050** (cerca de **−11,3**); s* ≈ **6,66**.
-Nesse exemplo de guardanapo, nota 6,5 daria p ≈ 0,434 (cerca de 0,43). **Não são os resultados
+Com médias **ilustrativas** 9,5 e 3,0: a = 13,0522 ÷ 6,5 ≈ **2,0080** (cerca de **2,01**);
+b = logit(0,979) − a × 9,5 ≈ **−15,2344** (cerca de **−15,2**); s* ≈ **7,59** (usando a e b sem arredondar).
+Nesse exemplo de guardanapo, nota 6,5 daria p ≈ 0,1014 (cerca de 0,10). **Não são os resultados
 medidos:** a tabela seguinte traz o chute com as médias reais, o ajuste de
 Newton, a verdade e as probabilidades do herói.
 
 **Por que podem discordar?** Âncoras só são boas se os alvos forem verdadeiros.
-Os alvos da tese que inspirou a config vieram de dados **reais**; neste mundo
-sintético, o código mede o p* médio nas pontas e o compara a 0,992 e 0,002.
+Os novos alvos foram medidos na base **real** da tese (A+ n=95, pureza 0,979;
+A− n=39.981, taxa 0,0001), substituindo a tabela anterior sem fonte reproduzível.
+Neste mundo sintético, o código mede o p* médio nas pontas e o compara a 0,979 e 0,0001.
 Âncora errada não avisa: calibra com confiança para o lugar errado.
 
 </details>
@@ -1463,8 +1468,8 @@ sintético, o código mede o p* médio nas pontas e o compara a 0,992 e 0,002.
         "code",
         """\
 for campo, esperado in [
-    ("pos_cut", 9), ("pos_target", 0.992), ("pos_min_count", 30),
-    ("neg_cut", 5), ("neg_target", 0.002), ("neg_min_count", 30),
+    ("pos_cut", 9), ("pos_target", 0.979), ("pos_min_count", 30),
+    ("neg_cut", 5), ("neg_target", 0.0001), ("neg_min_count", 30),
     ("max_abs_delta_a", 0.5), ("max_abs_delta_b", 0.5),
 ]:
     confere(f"âncoras: {campo}", getattr(ANCORAS, campo), esperado, 0)
@@ -1531,7 +1536,7 @@ display(pd.DataFrame({
 }, index=["probabilidade do herói"]))
 for nome, modelo, esperados in [
     ("rota B", platt_holdout, (0.9096, -5.5296, 6.0789)),
-    ("âncoras", platt_ancorado, (1.8588, -12.8354, 6.9052)),
+    ("âncoras", platt_ancorado, (1.8849, -13.9969, 7.4259)),
 ]:
     for parametro, valor, esperado in zip(
         ("inclinação a", "intercepto b", "s*"),
@@ -1540,12 +1545,12 @@ for nome, modelo, esperados in [
         confere(f"{nome}: {parametro}", valor, esperado, 0.00005)
 for modelo, esperados in [
     ("Supervisionado", (0.0751, 0.1087, 0.0099)),
-    ("Ancorado", (0.1287, 0.1390, 0.1055)),
+    ("Ancorado", (0.1645, 0.1652, 0.1362)),
 ]:
     for metrica, esperado in zip(("ECE", "Brier", "MAE vs p*"), esperados, strict=True):
         confere(f"{modelo}: {metrica}", comparacao_ancoras.loc[modelo, metrica], esperado, 0.00005)
 for rotulo, valor, esperado in [
-    ("herói supervisionado", hero_sup, 0.5946), ("herói ancorado", hero_anc, 0.3201),
+    ("herói supervisionado", hero_sup, 0.5946), ("herói ancorado", hero_anc, 0.1487),
     ("herói p*", hero_truth, 0.5974), ("herói rota A", df.loc[hero_idx, "p_cal"], 0.6045),
 ]:
     confere(rotulo, valor, esperado, 0.00005)
@@ -1632,8 +1637,8 @@ if not nbh.interagir(_ui_ancoras, {
 > 📖 **Palavra nova: limitador por janela.** É a regra que limita a mudança de cada controle entre períodos.
 
 **Exemplo pequeno, ilustrativo.** Arredondamos a rota B para 0,91 e −5,53;
-o ajuste pede 1,70 e −11,3. Cada controle pode andar só 0,5 e fica em 1,41 e −6,03.
-A nota que vira 50% sai de 6,08 para **4,28**, embora o destino ilustrativo fosse **6,66** antes do arredondamento.
+o ajuste pede 2,01 e −15,2. Cada controle pode andar só 0,5 e fica em 1,41 e −6,03.
+A nota que vira 50% sai de 6,08 para **4,28**, embora o destino ilustrativo fosse **7,59** antes do arredondamento.
 
 > 🔎 **Efeito colateral.** Limitar os controles separadamente não limita com
 > segurança a nota que vira 50%: ela pode até sair do caminho entre as duas curvas.
@@ -1656,9 +1661,9 @@ $$a_{\text{usado}}=a_{\text{ant}}+
 \operatorname{clip}(a_{\text{novo}}-a_{\text{ant}},-0{,}5,+0{,}5)$$
 (idem para b).
 
-**Exemplo ilustrativo**, de (0,91; −5,53) para (1,70; −11,3):
-1. Δa = 1,70 − 0,91 = 0,79 → +0,5 → a = 1,41.
-2. Δb = −11,3 − (−5,53) ≈ −5,8 → −0,5 → b = −6,03.
+**Exemplo ilustrativo**, de (0,91; −5,53) para (2,01; −15,2):
+1. Δa = 2,01 − 0,91 = 1,10 → +0,5 → a = 1,41.
+2. Δb = −15,2 − (−5,53) ≈ −9,7 → −0,5 → b = −6,03.
 3. s* = 6,03 ÷ 1,41 ≈ **4,28**.
 
 </details>
