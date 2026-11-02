@@ -27,7 +27,7 @@
 
 ## Pontos de honestidade científica que reforçam a qualidade
 - A demonstração de **vazamento por split** (sec 13.3) é apresentada com honestidade: neste dataset o efeito é **negligenciável por construção** (grupos majoritariamente singletons). Em vez de forjar um resultado, o notebook **mede e explica** o mecanismo (relevante em produção com *blocking*). Este é o tipo de transparência exigido pelo eixo 9.
-- A divergência **config × código** (R-11: `anchor_platt`/`by_band` não implementados) é declarada explicitamente (sec 9.6), ensinando "o que o código faz" e tratando a config como roadmap.
+- **R-11 resolvido:** `anchor_platt` implementado com CE média por âncora, L2, limites, mínimo e fallback supervisionado explícito; `by_band` permanece ignorado (ajuste global, como no Platt), documentado na config e na API.
 - A âncora de guardrail real (`nota ≥ 10` + perfeições) — mais estrita que o texto da config (`≥ 9`) — é respeitada conforme o **código** (ground truth), não conforme o texto.
 
 ## Achados

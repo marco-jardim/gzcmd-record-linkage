@@ -156,7 +156,7 @@ def test_newton_suave_ponderado_equivale_a_repetir_linhas():
 
 def test_load_anchor_spec(spec):
     assert tuple(asdict(spec).values()) == (
-        ">=", 9.0, 0.98, 50, "<", 5.0, 0.001, 200, 0.5, 0.5,
+        ">=", 9.0, 0.992, 30, "<", 5.0, 0.002, 30, 0.5, 0.5,
     )
 
 
@@ -183,8 +183,8 @@ def test_anchor_masks_fronteiras_e_sobreposicao(spec):
 
 def test_chute_de_dois_pontos(spec):
     model = nbh.anchor_two_point_guess([9.5, 9.5, 3, 3], spec)
-    logit_pos = np.log(0.98 / 0.02)
-    logit_neg = np.log(0.001 / 0.999)
+    logit_pos = np.log(0.992 / 0.008)
+    logit_neg = np.log(0.002 / 0.998)
     assert model.slope == pytest.approx((logit_pos - logit_neg) / 6.5)
     assert model.intercept == pytest.approx(logit_pos - model.slope * 9.5)
 

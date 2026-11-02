@@ -1349,15 +1349,17 @@ e quase nenhuma probabilidade nas baixas. São suposições, não respostas conf
 
 | item | valor na config |
 |---|---|
-| âncora positiva | notas a partir de 9, média-alvo 0,98, mínimo 50 pares |
-| âncora negativa | notas abaixo de 5, média-alvo 0,001, mínimo 200 pares |
-| método | por âncoras, uma curva por faixa de nota (só no papel: ver aviso) |
+| âncora positiva | notas a partir de 9, média-alvo 0,992, mínimo 30 pares |
+| âncora negativa | notas abaixo de 5, média-alvo 0,002, mínimo 30 pares |
+| método | `anchor_platt`, ajuste global; `by_band` é ignorado |
 | limitador por janela | mudança máxima de 0,5 em `a` e 0,5 em `b` |
 
-> ⚠️ **É uma demonstração, não o que a biblioteca faz.** A biblioteca **não implementa**
-> `anchor_platt`. `run_v3` usa Platt com gabarito (supervisionado); `fit_platt`
-> só aceita respostas 0/1, e o carregador de configuração nem lê `anchors`.
-> A mini-implementação está apenas em `notebooks/nb_helpers.py`.
+> ⚠️ **Demonstração e biblioteca têm ajustes distintos.** A biblioteca implementa
+> `calibration.fit_anchor_platt`, com os alvos e mínimos lidos da config, L2 nos dois
+> parâmetros e limites de magnitude. Sem âncoras suficientes, lança `ValueError`;
+> `fallback: "platt"` permite ajuste supervisionado se houver rótulos disponíveis.
+> Aqui, `notebooks/nb_helpers.py` demonstra Newton com L2 só na inclinação e
+> congelamento na curva anterior. `fit_platt` continua supervisionado, com respostas 0/1.
 
 Entre 5 e 9 a curva vem só da forma em S, não de dados: é extrapolação;
 se a curva real não for uma sigmoide da nota, o meio erra sem aviso.
@@ -1365,9 +1367,9 @@ se a curva real não for uma sigmoide da nota, o meio erra sem aviso.
 <details>
 <summary>📐 Para quem quer os limites da demonstração</summary>
 
-A config calibra `logit(p_base)` de um modelo-base; aqui usamos `nota_final`.
-O ajuste é global: só há âncoras nas bandas `low` e `high`, não nas cinzentas,
-então não reproduzimos `by_band`. As janelas são simuladas.
+A biblioteca e esta demonstração calibram a sigmoide de `nota_final`.
+O ajuste é global: `by_band` é ignorado também na biblioteca; só há âncoras nas
+bandas `low` e `high`, não nas cinzentas. As janelas e o limitador são simulados aqui.
 Usamos todas as notas, inclusive as do teste, mas nenhum rótulo no ajuste:
 não há vazamento de **rótulo**, nem validação numa população externa.
 
@@ -1383,7 +1385,7 @@ não há vazamento de **rótulo**, nem validação numa população externa.
 > É diferente de prometer que nunca vai errar.
 
 > 🧒 **Um pouco mais.** Em vez de respostas duras de sim ou não, o código dá
-> às âncoras as probabilidades presumidas 0,98 e 0,001. Ajusta só com esses pares.
+> às âncoras as probabilidades presumidas 0,992 e 0,002. Ajusta só com esses pares.
 
 > 📖 **Palavra nova: rótulo suave.** É uma resposta de quase certeza, não de certeza absoluta.
 
@@ -1396,34 +1398,35 @@ não há vazamento de **rótulo**, nem validação numa população externa.
 > 📖 **Palavra nova: congelar.** É manter a curva anterior quando falta o mínimo de pares.
 
 **Exemplo pequeno, medido com seed 42.** Há **113/242** âncoras positivas/negativas
-em todas as linhas e **81/171** só no treino. Como exigimos 200 negativas,
-o treino sozinho congelaria. Usamos todas as notas, inclusive do teste, **sem seus rótulos**.
+em todas as linhas e **81/171** só no treino. Com 81 positivas e 171 negativas,
+ambos os mínimos de 30 são atendidos e o ajuste no treino prossegue. Nesta demonstração,
+usamos todas as notas, inclusive do teste, **sem seus rótulos**.
 O p* médio nas âncoras é **0,9501** (cerca de **0,950**) e **0,0889**:
-as suposições 0,98 e 0,001 não combinam com este mundo inventado.
+as suposições 0,992 e 0,002 não combinam com este mundo inventado.
 
 | resultado medido | com gabarito do treino (rota B) | com âncoras |
 |---|---|---|
-| inclinação a | 0,9096 | 1,7530 |
-| intercepto b | −5,5296 | −12,7238 |
-| nota que vira 50% (s*) | 6,0789 (cerca de 6,08) | 7,2581 (cerca de 7,26) |
-| probabilidade do herói (se estiver no treino, valor supervisionado é in-sample) | 0,5946 | 0,2093 |
-| erro de promessa (ECE) no teste | 0,0751 | 0,1558 |
-| erro par a par (Brier) no teste | 0,1087 | 0,1540 |
-| distância média até p* (MAE) no teste | 0,0099 | 0,1214 |
+| inclinação a | 0,9096 | 1,8588 |
+| intercepto b | −5,5296 | −12,8354 |
+| nota que vira 50% (s*) | 6,0789 (cerca de 6,08) | 6,9052 (cerca de 6,91) |
+| probabilidade do herói (se estiver no treino, valor supervisionado é in-sample) | 0,5946 | 0,3201 |
+| erro de promessa (ECE) no teste | 0,0751 | 0,1287 |
+| erro par a par (Brier) no teste | 0,1087 | 0,1390 |
+| distância média até p* (MAE) no teste | 0,0099 | 0,1055 |
 
 O herói tem p* **0,5974**; a rota A lhe dá **0,6045**.
 As âncoras pioraram os erros aqui. Isso não é uma regra para todos os dados.
 O resultado ruim das âncoras decorre da inclinação escolhida no gerador (a = 0,85);
 com caudas mais íngremes, a probabilidade verdadeira média nas âncoras ficaria
-mais perto de 0,98/0,001 e o erro das âncoras tenderia a cair (não testado aqui).
+mais perto de 0,992/0,002 e o erro das âncoras tenderia a cair (não testado aqui).
 
 <details>
 <summary>📐 Para quem quer a matemática</summary>
 
-Só entram os pares-âncora; cada um recebe rótulo suave t: 0,98 nas positivas
-e 0,001 nas negativas. O resto segue 9.2 e 9.3.
+Só entram os pares-âncora; cada um recebe rótulo suave t: 0,992 nas positivas
+e 0,002 nas negativas. O resto segue 9.2 e 9.3.
 1. **Escolher:** nota ≥ 9,0 ou nota < 5,0. Pares entre 5 e 9 ficam de fora.
-2. **Conferir o mínimo:** com menos de 50 positivas ou 200 negativas, mantemos
+2. **Conferir o mínimo:** com menos de 30 positivas ou 30 negativas, mantemos
    a curva anterior ("congelar"). Abaixo medimos todas as linhas e só o treino.
 3. **Equilibrar:** com $N=n_++n_-$, cada positiva recebe peso $N/(2n_+)$ e
    cada negativa, $N/(2n_-)$, para os dois grupos puxarem com a mesma força.
@@ -1432,24 +1435,24 @@ e 0,001 nas negativas. O resto segue 9.2 e 9.3.
 5. **Newton igual ao anterior:** troque y por t e pese cada termo dos dados por w_i.
 
 **Por que suave?** Com 0 e 1, as âncoras seriam perfeitamente separáveis e,
-sem L2, a curva viraria degrau. Com 0,98 e 0,001, o ajuste tem solução finita.
+sem L2, a curva viraria degrau. Com 0,992 e 0,002, o ajuste tem solução finita.
 Como as notas variam dentro dos grupos, a curva não consegue dar exatamente
 o alvo a cada linha; encontra o melhor compromisso da multa ponderada.
 
 **Conta de guardanapo, ilustrativa (também inspira o chute inicial do Newton).**
 Se todo um grupo estivesse na sua nota média, teríamos duas equações:
-- logit(0,98) = ln 49 ≈ **3,89** = a·s̄₊ + b;
-- logit(0,001) ≈ **−6,91** = a·s̄₋ + b.
+- logit(0,992) = ln 124 ≈ **4,8203** = a·s̄₊ + b;
+- logit(0,002) ≈ **−6,2126** = a·s̄₋ + b.
 
-Com médias **ilustrativas** 9,5 e 3,0: a = 10,80 ÷ 6,5 ≈ **1,66**;
-b = 3,89 − 1,66 × 9,5 ≈ **−11,9**; s* ≈ **7,2**.
-Nesse exemplo de guardanapo, nota 6,5 daria p ≈ 0,25. **Não são os resultados
+Com médias **ilustrativas** 9,5 e 3,0: a = 11,0329 ÷ 6,5 ≈ **1,6974** (cerca de **1,70**);
+b = 4,8203 − 1,6974 × 9,5 ≈ **−11,3050** (cerca de **−11,3**); s* ≈ **6,66**.
+Nesse exemplo de guardanapo, nota 6,5 daria p ≈ 0,434 (cerca de 0,43). **Não são os resultados
 medidos:** a tabela seguinte traz o chute com as médias reais, o ajuste de
 Newton, a verdade e as probabilidades do herói.
 
 **Por que podem discordar?** Âncoras só são boas se os alvos forem verdadeiros.
 Os alvos da tese que inspirou a config vieram de dados **reais**; neste mundo
-sintético, o código mede o p* médio nas pontas e o compara a 0,98 e 0,001.
+sintético, o código mede o p* médio nas pontas e o compara a 0,992 e 0,002.
 Âncora errada não avisa: calibra com confiança para o lugar errado.
 
 </details>
@@ -1460,8 +1463,8 @@ sintético, o código mede o p* médio nas pontas e o compara a 0,98 e 0,001.
         "code",
         """\
 for campo, esperado in [
-    ("pos_cut", 9), ("pos_target", 0.98), ("pos_min_count", 50),
-    ("neg_cut", 5), ("neg_target", 0.001), ("neg_min_count", 200),
+    ("pos_cut", 9), ("pos_target", 0.992), ("pos_min_count", 30),
+    ("neg_cut", 5), ("neg_target", 0.002), ("neg_min_count", 30),
     ("max_abs_delta_a", 0.5), ("max_abs_delta_b", 0.5),
 ]:
     confere(f"âncoras: {campo}", getattr(ANCORAS, campo), esperado, 0)
@@ -1528,7 +1531,7 @@ display(pd.DataFrame({
 }, index=["probabilidade do herói"]))
 for nome, modelo, esperados in [
     ("rota B", platt_holdout, (0.9096, -5.5296, 6.0789)),
-    ("âncoras", platt_ancorado, (1.7530, -12.7238, 7.2581)),
+    ("âncoras", platt_ancorado, (1.8588, -12.8354, 6.9052)),
 ]:
     for parametro, valor, esperado in zip(
         ("inclinação a", "intercepto b", "s*"),
@@ -1537,12 +1540,12 @@ for nome, modelo, esperados in [
         confere(f"{nome}: {parametro}", valor, esperado, 0.00005)
 for modelo, esperados in [
     ("Supervisionado", (0.0751, 0.1087, 0.0099)),
-    ("Ancorado", (0.1558, 0.1540, 0.1214)),
+    ("Ancorado", (0.1287, 0.1390, 0.1055)),
 ]:
     for metrica, esperado in zip(("ECE", "Brier", "MAE vs p*"), esperados, strict=True):
         confere(f"{modelo}: {metrica}", comparacao_ancoras.loc[modelo, metrica], esperado, 0.00005)
 for rotulo, valor, esperado in [
-    ("herói supervisionado", hero_sup, 0.5946), ("herói ancorado", hero_anc, 0.2093),
+    ("herói supervisionado", hero_sup, 0.5946), ("herói ancorado", hero_anc, 0.3201),
     ("herói p*", hero_truth, 0.5974), ("herói rota A", df.loc[hero_idx, "p_cal"], 0.6045),
 ]:
     confere(rotulo, valor, esperado, 0.00005)
@@ -1628,9 +1631,9 @@ if not nbh.interagir(_ui_ancoras, {
 
 > 📖 **Palavra nova: limitador por janela.** É a regra que limita a mudança de cada controle entre períodos.
 
-**Exemplo pequeno, ilustrativo.** Os controles começam em 0,85 e −5,1;
-o ajuste pede 1,66 e −11,9. Cada controle pode andar só 0,5 e fica em 1,35 e −5,6.
-A nota que vira 50% sai de 6,0 para **4,1**, embora o destino pedido fosse **7,2**.
+**Exemplo pequeno, ilustrativo.** Arredondamos a rota B para 0,91 e −5,53;
+o ajuste pede 1,70 e −11,3. Cada controle pode andar só 0,5 e fica em 1,41 e −6,03.
+A nota que vira 50% sai de 6,08 para **4,28**, embora o destino ilustrativo fosse **6,66** antes do arredondamento.
 
 > 🔎 **Efeito colateral.** Limitar os controles separadamente não limita com
 > segurança a nota que vira 50%: ela pode até sair do caminho entre as duas curvas.
@@ -1641,8 +1644,8 @@ da probabilidade numa grade de notas.
 
 Na simulação, "no mês passado tínhamos gabarito; agora não temos".
 Começamos no Platt do treino e criamos seis períodos só em memória.
-O terceiro tem 300 pares aleatórios, sem os cenários narrativos: faltam âncoras
-e a curva congela. A tabela confere isso.
+O terceiro tem 100 pares aleatórios, sem os cenários narrativos: há 20 âncoras
+positivas e 37 negativas. As positivas não atingem o mínimo de 30 e a curva congela.
 
 <details>
 <summary>📐 Para quem quer a matemática</summary>
@@ -1653,10 +1656,10 @@ $$a_{\text{usado}}=a_{\text{ant}}+
 \operatorname{clip}(a_{\text{novo}}-a_{\text{ant}},-0{,}5,+0{,}5)$$
 (idem para b).
 
-**Exemplo ilustrativo**, de (0,85; −5,1) para (1,66; −11,9):
-1. Δa = 0,81 → +0,5 → a = 1,35.
-2. Δb = −6,8 → −0,5 → b = −5,6.
-3. s* = 5,6 ÷ 1,35 ≈ **4,1**.
+**Exemplo ilustrativo**, de (0,91; −5,53) para (1,70; −11,3):
+1. Δa = 1,70 − 0,91 = 0,79 → +0,5 → a = 1,41.
+2. Δb = −11,3 − (−5,53) ≈ −5,8 → −0,5 → b = −6,03.
+3. s* = 6,03 ÷ 1,41 ≈ **4,28**.
 
 </details>
 
@@ -1668,7 +1671,7 @@ $$a_{\text{usado}}=a_{\text{ant}}+
 janelas_ancoras = [
     synthetic_data.generate_comparador(seed=SEED+k, n_pairs=n)
     .frame["nota final"].to_numpy()
-    for k, n in enumerate([600, 600, 300, 600, 600, 600], 1)
+    for k, n in enumerate([600, 600, 100, 600, 600, 600], 1)
 ]
 historico_ancoras = nbh.simulate_anchor_windows(
     janelas_ancoras, ANCORAS, init=platt_holdout,
@@ -1686,8 +1689,8 @@ assert np.allclose(
     historico_ancoras.iloc[1][["a_usado", "b_usado"]].to_numpy(dtype=float),
     atol=0, rtol=0,
 )
-print("Janela de 300 pares aleatórios: congelada; curva anterior preservada.")
-confere("pares aleatórios na terceira janela", len(janelas_ancoras[2]), 300, 0)
+print("Janela de 100 pares aleatórios: congelada; curva anterior preservada.")
+confere("pares aleatórios na terceira janela", len(janelas_ancoras[2]), 100, 0)
 confere("períodos simulados", len(janelas_ancoras), 6, 0)
 fig, resumo_janelas = nbh.plot_anchor_windows(historico_ancoras)
 plt.show()""",
@@ -1700,14 +1703,16 @@ plt.show()""",
 > 🧸 **Bem simples.** Uma receita escrita no papel não é um bolo pronto.
 > Precisamos conferir quais passos a cozinha realmente executa.
 
-> 🧒 **Um pouco mais.** O arquivo YAML descreve âncoras por faixa, mas `run_v3`
-> executa Platt com gabarito, numa curva única. A demonstração não muda `df["p_cal"]`.
+> 🧒 **Um pouco mais.** `run_v3(p_cal="config")` lê o método do YAML e pode ajustar
+> `anchor_platt` globalmente; `by_band` é ignorado. Aqui mantemos a rota A supervisionada
+> com `p_cal="fit_platt"`; a demonstração não muda `df["p_cal"]`.
 
 > 📖 **Palavra nova: configuração.** É o arquivo de instruções, que só tem efeito quando o programa lê e executa cada opção.
 
-**Exemplo pequeno.** Escrever `anchor_platt` no arquivo não faz a biblioteca
-aprender por âncoras: essa parte existe apenas na demonstração do notebook.
-Platt olha só a nota final, com resultado repetível para conferir a rota A.
+**Exemplo pequeno.** Com `method: "anchor_platt"` e `p_cal="config"`, a biblioteca usa
+`calibration.fit_anchor_platt`, com os alvos e mínimos da config. Se faltarem âncoras,
+`fallback: "platt"` permite ajuste supervisionado quando há rótulos; sem isso, há erro.
+Os dois métodos olham só a nota final. A rota A continua com Platt supervisionado.
 O outro caminho, `GZCMDClassifier.predict_proba`, usa mais pistas e aparece
 com Random Forest e XGBoost na §13.7, no mesmo teste separado.
 
@@ -3558,9 +3563,9 @@ Isto é **demonstração didática**, não evidência de desempenho em bases rea
   IDs únicos. As frações vêm dos ajustes do gerador. Os IDs são independentes de
   tudo: vazamento via ID é impossível aqui e diferenças entre divisões são ruído
   de partição. Isso não reproduz comparações dependentes da mesma pessoa em bases reais.
-- **Âncoras só no notebook.** A biblioteca não implementa `anchor_platt`; executa
-  Platt supervisionado global. Os alvos da config não batem com as médias de p*
-  medidas na §9.8. A demo não corrige essa hipótese.
+- **Âncoras dependem das suposições.** A biblioteca implementa `anchor_platt` global,
+  com `by_band` ignorado e fallback supervisionado opcional; a §9.8 usa um ajuste didático distinto.
+  Os alvos da config não batem com as médias de p* medidas ali. A demo não corrige essa hipótese.
 - **Guardrails, config × código.** Os cortes descritos no texto da YAML não batem
   com os parâmetros executados, como conferimos na §10.
   `risky_if` (`grey_mother_missing`, `low_name_and_low_dob`) não está implementado.
