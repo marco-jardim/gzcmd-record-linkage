@@ -78,15 +78,16 @@ bands:
 
 anchors:
   # Anchor sets for label-free calibration
-  # Based on the thesis: score bands 9-10 and 10+ are ~98% true matches; very low bands are ~0%.
+  # Targets are ASSUMED parameters taken from the thesis anchor table (99.2% / 0.2%);
+  # they are not validated on the data being calibrated.
   pos_anchor:
     rule: "nota_final >= 9.0"
-    target_mean_probability: 0.98
-    min_count: 50
+    target_mean_probability: 0.992
+    min_count: 30
   neg_anchor:
     rule: "nota_final < 5.0"
-    target_mean_probability: 0.001
-    min_count: 200
+    target_mean_probability: 0.002
+    min_count: 30
 
 base_model:
   # Your pre-trained model that outputs p_base (uncalibrated or weakly calibrated)
@@ -99,8 +100,18 @@ base_model:
 
 calibration:
   # Online / rolling calibration WITHOUT human labels.
-  method: "anchor_platt"   # sigmoid(a*logit(p_base)+b) fitted using anchors
-  by_band: true            # fit separate (a,b) per band; recommended for grey bands
+  # anchor_platt calibrates nota_final itself; it does not replace the supervised
+  # calibration of another model's probability.
+  method: "anchor_platt"   # sigmoid(alpha*nota_final+beta), fitted to anchor means
+  by_band: true            # currently ignored: both Platt methods fit globally
+  fallback: "error"        # optional "platt" requires labels if anchors are scarce
+  anchor_platt:
+    # Minimizes squared logit residuals of the two anchor means
+    # + l2*(alpha^2+beta^2); L2 and bounds may move the means off the targets.
+    l2: 1.0e-6
+    alpha_max: 10.0        # 0 <= alpha <= alpha_max (monotone in nota_final)
+    beta_max: 50.0         # |beta| <= beta_max
+    min_anchor_size: 30
   clip_min: 1.0e-6
   clip_max: 0.999999
   platt:

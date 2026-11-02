@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import yaml
 
@@ -58,10 +61,48 @@ class PlattFitParams:
 
 
 @dataclass(frozen=True)
+class AnchorFitParams:
+    s_plus: float = 9.0
+    s_minus: float = 5.0
+    r_plus: float = 0.992
+    r_minus: float = 0.002
+    min_anchor_size: int = 30
+    min_pos_count: int = 30
+    min_neg_count: int = 30
+    l2: float = 1e-6
+    alpha_max: float = 10.0
+    beta_max: float = 50.0
+    max_iter: int = 100
+    tol: float = 1e-10
+
+    def __post_init__(self) -> None:
+        for name in (
+            "s_plus", "s_minus", "r_plus", "r_minus", "l2",
+            "alpha_max", "beta_max", "tol",
+        ):
+            if not math.isfinite(getattr(self, name)):
+                raise ValueError(f"anchor_platt.{name} must be finite")
+        if not self.s_minus < self.s_plus:
+            raise ValueError("anchor_platt requires s_minus < s_plus")
+        if not 0 < self.r_minus < self.r_plus < 1:
+            raise ValueError("anchor_platt requires 0 < r_minus < r_plus < 1")
+        if self.l2 < 0 or min(self.alpha_max, self.beta_max, self.tol) <= 0:
+            raise ValueError("anchor_platt requires l2 >= 0 and positive bounds/tol")
+        for name in ("min_anchor_size", "min_pos_count", "min_neg_count", "max_iter"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"anchor_platt.{name} must be a positive integer")
+
+
+@dataclass(frozen=True)
 class CalibrationConfig:
     clip_min: float = 1e-6
     clip_max: float = 0.999999
     platt: PlattFitParams = field(default_factory=PlattFitParams)
+    method: str = "platt"
+    by_band: bool = False
+    fallback: str = "error"
+    anchor_platt: AnchorFitParams = field(default_factory=AnchorFitParams)
 
 
 @dataclass(frozen=True)
@@ -150,7 +191,8 @@ def _load_band_definitions(data: Mapping[str, Any]) -> tuple[BandDefinition, ...
 
         if (min_f is not None) and (max_f is not None) and not (min_f < max_f):
             raise ValueError(
-                f"Invalid band range for {name!r}: expected min < max, got {min_f} >= {max_f}"
+                f"Invalid band range for {name!r}: expected min < max, "
+                f"got {min_f} >= {max_f}"
             )
 
         out.append(
@@ -283,9 +325,48 @@ def _load_calibration_config(data: Mapping[str, Any]) -> CalibrationConfig:
     max_iter_raw = platt.get("max_iter", 100)
     tol_raw = platt.get("tol", 1e-10)
 
+    method = str(cal.get("method", "platt"))
+    if method not in {"platt", "anchor_platt", "stub"}:
+        raise ValueError("calibration.method must be platt, anchor_platt or stub")
+    fallback = str(cal.get("fallback", "error"))
+    if fallback not in {"error", "platt"}:
+        raise ValueError("calibration.fallback must be error or platt")
+    by_band = cal.get("by_band", False)
+    if not isinstance(by_band, bool):
+        raise ValueError("calibration.by_band must be a boolean")
+    if not 0 <= clip_min < clip_max <= 1:
+        raise ValueError("calibration requires 0 <= clip_min < clip_max <= 1")
+
+    anchors = _as_mapping(data.get("anchors"), field="anchors")
+    anchor_params = dict(_as_mapping(
+        cal.get("anchor_platt"), field="calibration.anchor_platt"
+    ))
+    # Only the score predicates supported by the thesis are accepted (no eval).
+    for key, op, threshold, target, count in (
+        ("pos_anchor", ">=", "s_plus", "r_plus", "min_pos_count"),
+        ("neg_anchor", "<", "s_minus", "r_minus", "min_neg_count"),
+    ):
+        anchor = _as_mapping(anchors.get(key), field=f"anchors.{key}")
+        if "rule" in anchor:
+            match = re.fullmatch(
+                rf"nota_final\s*{op}\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))",
+                str(anchor["rule"]).strip(),
+            )
+            if match is None:
+                raise ValueError(f"anchors.{key}.rule must use nota_final {op} score")
+            anchor_params.setdefault(threshold, float(match[1]))
+        if "target_mean_probability" in anchor:
+            anchor_params.setdefault(target, float(anchor["target_mean_probability"]))
+        if "min_count" in anchor:
+            anchor_params.setdefault(count, anchor["min_count"])
+
     return CalibrationConfig(
         clip_min=clip_min,
         clip_max=clip_max,
+        method=method,
+        by_band=by_band,
+        fallback=fallback,
+        anchor_platt=AnchorFitParams(**anchor_params),
         platt=PlattFitParams(
             l2=1e-3 if l2_raw is None else float(l2_raw),
             max_iter=100 if max_iter_raw is None else int(max_iter_raw),
@@ -301,9 +382,7 @@ def _load_evaluation_defaults(data: Mapping[str, Any]) -> EvaluationDefaults:
     seeds_list: list[int]
     if isinstance(raw_seeds, int):
         seeds_list = [int(raw_seeds)]
-    elif isinstance(raw_seeds, list):
-        seeds_list = [int(x) for x in raw_seeds]
-    elif isinstance(raw_seeds, tuple):
+    elif isinstance(raw_seeds, (list, tuple)):
         seeds_list = [int(x) for x in raw_seeds]
     else:
         raise TypeError("evaluation.seeds must be an int or a list of ints")

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pandas as pd
 
 from .bands import BandAssigner
 from .calibration import (
-    PlattModel,
     compute_p_cal,
+    fit_calibration_from_df,
     fit_platt_from_df,
     get_nota_series,
     load_platt_model,
@@ -127,17 +127,24 @@ def run_v3(
     p_cal_params: dict[str, float] | None = None
     clip_min = float(cfg.calibration.clip_min)
     clip_max = float(cfg.calibration.clip_max)
+    if p_cal == "config":
+        p_cal = cfg.calibration.method
     if p_cal == "stub":
         df["p_cal"] = compute_p_cal(
             df, method="stub", clip_min=clip_min, clip_max=clip_max
         )
-    elif p_cal == "fit_platt":
-        model = fit_platt_from_df(
-            df,
-            l2=cfg.calibration.platt.l2,
-            max_iter=cfg.calibration.platt.max_iter,
-            tol=cfg.calibration.platt.tol,
-        )
+    elif p_cal in {"fit_platt", "platt", "anchor_platt"}:
+        if p_cal == "fit_platt":
+            model = fit_platt_from_df(
+                df,
+                l2=cfg.calibration.platt.l2,
+                max_iter=cfg.calibration.platt.max_iter,
+                tol=cfg.calibration.platt.tol,
+            )
+        else:
+            model = fit_calibration_from_df(
+                df, config=replace(cfg.calibration, method=p_cal)
+            )
         p_cal_params = {
             "intercept": float(model.intercept),
             "slope": float(model.slope),
@@ -188,7 +195,8 @@ def run_v3(
         df["p_cal"] = probs
     else:
         raise ValueError(
-            "p_cal must be one of: stub, fit_platt, load_platt, fit_ml_rf, load_ml_rf, fit_ml_xgb, load_ml_xgb"
+            "p_cal must be one of: config, stub, platt, anchor_platt, fit_platt, "
+            "load_platt, fit_ml_rf, load_ml_rf, fit_ml_xgb, load_ml_xgb"
         )
 
     g = apply_guardrails(
