@@ -177,7 +177,7 @@ def fit_anchor_platt(
         gradient = 2.0 * l2 * weights
         # One residual per anchor mean, so neither set dominates by its size.
         for scores, target_logit in anchors:
-            value, value_gradient = _logit_mean_and_gradient(scores, weights)
+            value, value_gradient = logit_mean_and_gradient(scores, weights)
             residual = value - target_logit
             loss += residual * residual
             gradient = gradient + 2.0 * residual * value_gradient
@@ -199,7 +199,7 @@ def fit_anchor_platt(
     model = PlattModel(intercept=float(result.x[1]), slope=float(result.x[0]))
 
     residuals = [
-        _logit_mean_and_gradient(scores, result.x)[0] - target_logit
+        logit_mean_and_gradient(scores, result.x)[0] - target_logit
         for scores, target_logit in anchors
     ]
     if not result.success or max(abs(r) for r in residuals) > 1e-3:
@@ -214,7 +214,7 @@ def fit_anchor_platt(
     return model
 
 
-def _logit_mean_and_gradient(
+def logit_mean_and_gradient(
     scores: np.ndarray, weights: np.ndarray
 ) -> tuple[float, np.ndarray]:
     """Calcula logit da média da sigmoide e seu gradiente, de forma estável."""
@@ -228,6 +228,9 @@ def _logit_mean_and_gradient(
     p, q = np.exp(log_p), np.exp(log_q)
     dz = np.exp(log_p - log_sum_p) * q + np.exp(log_q - log_sum_q) * p
     return value, np.array([float(dz @ scores), float(dz.sum())])
+
+
+_logit_mean_and_gradient = logit_mean_and_gradient  # alias retrocompativel (0.2.x)
 
 
 def anchor_means(
