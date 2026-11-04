@@ -10,7 +10,7 @@ It assumes you already computed:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -18,44 +18,12 @@ import pandas as pd
 Decision = Literal["MATCH", "NONMATCH", "LLM_REVIEW", "DEFERRED"]
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True)
 class Costs:
     false_positive: float
     false_negative: float
     llm_review: float
-    # Keep the historical three-field dataclass serialization used by notebooks.
-    _human_review: ClassVar[float] = 1.0
-
-    def __init__(
-        self,
-        false_positive: float,
-        false_negative: float,
-        llm_review: float,
-        human_review: float = 1.0,
-    ) -> None:
-        object.__setattr__(self, "false_positive", false_positive)
-        object.__setattr__(self, "false_negative", false_negative)
-        object.__setattr__(self, "llm_review", llm_review)
-        object.__setattr__(self, "_human_review", human_review)
-
-    @property
-    def human_review(self) -> float:
-        return self._human_review
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Costs):
-            return NotImplemented
-        return (
-            self.false_positive,
-            self.false_negative,
-            self.llm_review,
-            self.human_review,
-        ) == (
-            other.false_positive,
-            other.false_negative,
-            other.llm_review,
-            other.human_review,
-        )
+    human_review: float = 1.0
 
     def total_loss(
         self,
@@ -119,6 +87,10 @@ class LLMError:
     e_fp: float  # P(LLM says MATCH | true is NONMATCH) among reviewed
     e_fn: float  # P(LLM says NONMATCH | true is MATCH) among reviewed
     e_unsure: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.e_unsure) or not 0 <= self.e_unsure <= 1:
+            raise ValueError("e_unsure must be a finite probability within [0,1]")
 
 
 @dataclass

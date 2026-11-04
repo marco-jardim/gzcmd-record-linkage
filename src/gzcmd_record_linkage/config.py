@@ -288,6 +288,10 @@ def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
         rates[str(band)] = {"e_fp": float(cfg["e_fp"]), "e_fn": float(cfg["e_fn"])}
         if "e_unsure" in cfg:
             rates[str(band)]["e_unsure"] = float(cfg["e_unsure"])
+            if not math.isfinite(rates[str(band)]["e_unsure"]) or not (
+                0 <= rates[str(band)]["e_unsure"] <= 1
+            ):
+                raise ValueError("e_unsure must be a finite probability within [0,1]")
 
     return LLMReviewConfig(enabled=enabled, error_rates_by_band=rates)
 

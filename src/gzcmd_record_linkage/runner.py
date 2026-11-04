@@ -56,11 +56,13 @@ def build_engine_from_config(
         raise KeyError(f"Unknown mode '{mode}'. Known modes: {known}")
 
     mode_cfg = cfg.decision_policy.modes[mode]
+    policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
+    legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
 
     costs = Costs(
         false_positive=float(mode_cfg.false_positive_cost),
         false_negative=float(mode_cfg.false_negative_cost),
-        llm_review=float(mode_cfg.llm_review_cost),
+        llm_review=0.25 if legacy_override else float(mode_cfg.llm_review_cost),
         human_review=float(mode_cfg.human_review_cost),
     )
 
@@ -102,7 +104,7 @@ def build_engine_from_config(
         budget=budget,
         min_auto_match=mode_cfg.min_auto_match_threshold,
         max_auto_nonmatch=mode_cfg.max_auto_nonmatch_threshold,
-        policy_version=(cfg.guardrails.policy_version if policy_version is None else policy_version),
+        policy_version=policy_version,
         human_error=HumanError(mode_cfg.human_e_fp, mode_cfg.human_e_fn),
         human_budget=HumanBudget(mode_cfg.human_max_pairs_per_window, human_used),
     )
@@ -130,6 +132,7 @@ def run_v3(
     policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
     if policy_version not in {"v3", "v3.1"}:
         raise ValueError("policy_version must be v3 or v3.1")
+    legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
     df = load_comparador_csv(Path(input_csv), cfg=LoadConfig(macd_enabled=macd_enabled))
 
     nota_raw = pd.to_numeric(get_nota_series(df), errors="coerce")
@@ -224,8 +227,8 @@ def run_v3(
     g = apply_guardrails(
         df,
         temporal_days=cfg.guardrails.temporal_days,
-        nota_always_match=cfg.guardrails.nota_always_match,
-        nota_always_nonmatch=cfg.guardrails.nota_always_nonmatch,
+        nota_always_match=10.0 if legacy_override else cfg.guardrails.nota_always_match,
+        nota_always_nonmatch=3.0 if legacy_override else cfg.guardrails.nota_always_nonmatch,
         homonimia_min_nota=cfg.guardrails.homonimia_min_nota,
         homonimia_year_gap=cfg.guardrails.homonimia_year_gap,
         policy_version=policy_version,

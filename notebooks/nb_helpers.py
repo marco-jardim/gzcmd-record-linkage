@@ -708,6 +708,7 @@ def build_engine(
         false_positive=costs.false_positive if c_fp is None else float(c_fp),
         false_negative=costs.false_negative if c_fn is None else float(c_fn),
         llm_review=costs.llm_review if c_llm is None else float(c_llm),
+        human_review=costs.human_review,
     )
     if llm_max is not None and cfg.llm_review.enabled:
         if llm_max < 0:

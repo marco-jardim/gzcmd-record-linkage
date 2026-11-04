@@ -28,7 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
     default_config = _default_config_path()
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    run = sub.add_parser("run", help="Run v3 policy pipeline")
+    run = sub.add_parser(
+        "run", help="Run the decision policy pipeline (v3 or v3.1)"
+    )
     run.add_argument(
         "--policy-version", choices=["v3", "v3.1"], default=None,
         help="Decision policy (default: config guardrails.policy_version, or v3)",
@@ -265,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
             macd_enabled=not args.no_macd,
             llm_used=0,
             p_cal="fit_platt",
+            policy_version="v3",
             save_platt_model_path=args.output_model,
         )
         print(f"wrote_model={args.output_model}")

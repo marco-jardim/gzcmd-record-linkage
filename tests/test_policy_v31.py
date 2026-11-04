@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import os
 import sys
-from dataclasses import replace
+from dataclasses import asdict, replace
 from importlib.resources import files
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from gzcmd_record_linkage.runner import build_engine_from_config, run_v3
 
 CONFIG = str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
 CSV = Path(__file__).resolve().parents[1] / "data/synthetic/comparador_sintetico.csv"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture(scope="module")
@@ -107,6 +109,19 @@ def cases():
     return frame
 
 
+def parity_cases():
+    temporal = cases()
+    compatible = cases()
+    compatible["R_DTOBITO_dt"] = pd.Timestamp("2022-01-01")
+    strong = compatible.copy()
+    strong["diff_ano"] = 0
+    strong["dtnasc_all_zero"] = 0
+    neutral = strong.copy()
+    neutral["NOME qtd frag iguais"] = 0.5
+    # Preserve every probability/band combination in four independent contexts.
+    return pd.concat([temporal, compatible, strong, neutral], ignore_index=True)
+
+
 @pytest.mark.parametrize("version", ["v3", "v3.1"])
 @pytest.mark.parametrize("mode", ["vigilancia", "confirmacao"])
 @pytest.mark.parametrize("llm_max,human_max", [(0, None), (3, 0), (5, 2), (1000, None)])
@@ -116,7 +131,7 @@ def test_reference_parity(reference, version, mode, llm_max, human_max, unsure):
     unsure = unsure if version == "v3.1" else 0
     ref, guards, bands, config = reference
     cfg = load_config(CONFIG)
-    frame = cases()
+    frame = parity_cases()
     frame["band"] = BandAssigner.from_config(cfg).assign(frame.nota_final)
     ref_cfg = config.load_config(CONFIG)
     pd.testing.assert_series_equal(
@@ -129,6 +144,18 @@ def test_reference_parity(reference, version, mode, llm_max, human_max, unsure):
     pd.testing.assert_series_equal(actual_g.guardrail, expected_g.guardrail)
     pd.testing.assert_series_equal(actual_g.reason, expected_g.reason)
     frame["guardrail"] = actual_g.guardrail
+    if version == "v3":
+        assert {
+            "temporal_filter",
+            "nota_final_low",
+            "homonimia_risk",
+            "nota_final_high",
+        } <= set(actual_g.reason.dropna())
+        # Exercise FORCE_REVIEW independently of EVR and caps as well as homonyms.
+        forced = frame.index[
+            frame.nota_final.eq(5) & frame.p_cal.eq(0) & frame.guardrail.isna()
+        ][-1]
+        frame.loc[forced, "guardrail"] = "FORCE_REVIEW"
     m = cfg.decision_policy.modes[mode]
     engines = []
     for module in [sys.modules[PolicyEngineV3.__module__], ref]:
@@ -152,6 +179,19 @@ def test_reference_parity(reference, version, mode, llm_max, human_max, unsure):
     pd.testing.assert_frame_equal(actual, expected.loc[:, actual.columns])
     assert engines[0].budget.llm_used == engines[1].budget.llm_used
     assert engines[0].human_budget.used == engines[1].human_budget.used
+    if version == "v3":
+        assert actual.review_requested.any()
+        caps = (
+            actual.base_choice.eq("MATCH") & actual.p_cal.lt(m.min_auto_match_threshold)
+        ) | (
+            actual.base_choice.eq("NONMATCH")
+            & actual.p_cal.gt(m.max_auto_nonmatch_threshold)
+        )
+        assert (caps & frame.guardrail.isna()).any()
+        assert actual.loc[forced, "review_requested"]
+        if llm_max == 1000:
+            assert actual.action.eq("LLM_REVIEW").any()
+            assert actual.loc[forced, "action"] == "LLM_REVIEW"
     if version == "v3.1" and llm_max == 1000:
         assert set(actual.action) == {"MATCH", "NONMATCH", "LLM_REVIEW", "DEFERRED"}
 
@@ -354,3 +394,113 @@ def test_budget_validation_and_bad_version():
     cfg = load_config(CONFIG)
     cfg = replace(cfg, guardrails=replace(cfg.guardrails, policy_version="v3.1"))
     assert build_engine_from_config(cfg, mode="vigilancia").policy_version == "v3.1"
+
+
+@pytest.mark.parametrize("mode", ["vigilancia", "confirmacao"])
+def test_v31_yaml_legacy_override_matches_030(mode, tmp_path):
+    historical = FIXTURES / "gzcmd_config_0.3.0.yaml"
+    v31_yaml = FIXTURES / "gzcmd_reference_config_v31.yaml"
+    cfg = load_config(v31_yaml)
+    assert cfg.guardrails.policy_version == "v3.1"
+    assert cfg.guardrails.nota_always_match == 9
+    assert cfg.guardrails.nota_always_nonmatch == 5
+    assert cfg.decision_policy.modes[mode].llm_review_cost == 0.005
+    expected, _ = run_v3(
+        input_csv=CSV, config_path=historical, mode=mode, p_cal="platt"
+    )
+    actual, summary = run_v3(
+        input_csv=CSV,
+        config_path=v31_yaml,
+        mode=mode,
+        p_cal="platt",
+        policy_version="v3",
+    )
+    pd.testing.assert_frame_equal(actual, expected, check_exact=True)
+    assert summary.policy_version == "v3"
+    assert (
+        build_engine_from_config(cfg, mode=mode, policy_version="v3").costs.llm_review
+        == 0.25
+    )
+    # A YAML originally declaring v3 must still honor its custom LLM cost.
+    custom = replace(cfg, guardrails=replace(cfg.guardrails, policy_version="v3"))
+    assert build_engine_from_config(custom, mode=mode).costs.llm_review == 0.005
+
+    output = tmp_path / "historical.csv"
+    assert (
+        main(
+            [
+                "run",
+                "--input",
+                str(CSV),
+                "--config",
+                str(v31_yaml),
+                "--mode",
+                mode,
+                "--policy-version",
+                "v3",
+                "--p-cal",
+                "fit_platt",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    expected_csv = pd.read_csv(
+        io.StringIO(expected.to_csv(index=False, sep=";")), sep=";"
+    )
+    pd.testing.assert_frame_equal(
+        pd.read_csv(output, sep=";"), expected_csv, check_exact=True
+    )
+
+
+def test_v31_human_cost_dataclass_and_notebook_propagation():
+    import nb_helpers
+
+    costs = Costs(10, 50, 0.005, human_review=2.5)
+    assert asdict(costs)["human_review"] == 2.5
+    assert replace(costs, false_positive=20).human_review == 2.5
+    cfg = load_config(CONFIG)
+    modes = dict(cfg.decision_policy.modes)
+    modes["vigilancia"] = replace(modes["vigilancia"], human_review_cost=2.5)
+    cfg = replace(cfg, decision_policy=replace(cfg.decision_policy, modes=modes))
+    assert nb_helpers.build_engine(cfg, "vigilancia", c_fp=12).costs.human_review == 2.5
+
+
+@pytest.mark.parametrize("bad", [1.5, -0.1, float("nan"), float("inf")])
+def test_v31_invalid_e_unsure(bad, tmp_path):
+    data = yaml.safe_load(Path(CONFIG).read_text(encoding="utf-8"))
+    data["llm_review"]["reliability"]["error_rates_by_band"]["high"]["e_unsure"] = bad
+    path = tmp_path / "invalid.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="e_unsure"):
+        load_config(path)
+    with pytest.raises(ValueError, match="e_unsure"):
+        LLMError(0.01, 0.02, e_unsure=bad)
+
+
+def test_v31_fit_calibration_pins_v3(monkeypatch, tmp_path):
+    seen = {}
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        return run_v3(**kwargs)
+
+    monkeypatch.setattr("gzcmd_record_linkage.cli.run_v3", spy)
+    output = tmp_path / "platt.json"
+    assert (
+        main(
+            [
+                "fit-calibration",
+                "--input",
+                str(CSV),
+                "--config",
+                str(FIXTURES / "gzcmd_reference_config_v31.yaml"),
+                "--output-model",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert seen["policy_version"] == "v3"
+    assert output.is_file()

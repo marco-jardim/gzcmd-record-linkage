@@ -117,8 +117,10 @@ interpretador de regras: o runner chama `apply_guardrails` com `guardrails.param
 `calibration.by_band` não produz ajuste por banda nos métodos Platt.
 
 A saída acrescenta `band`, `p_cal`, `guardrail`, `guardrail_reason`, `action`,
-`base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. `evr` compara a
-perda da decisão automática com a perda da revisão. `review_requested=True` não
+`base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. Na v3.1 também
+inclui `loss_human`, `decision_reason`, `human_gain`, `selected_loss`, `loss_match`
+e `loss_nonmatch`. `evr` compara a melhor alternativa não LLM (incluindo humano
+na v3.1) com a perda LLM. `review_requested=True` não
 garante encaminhamento quando o orçamento se esgota; confira `action` e o resumo.
 O runner não executa automaticamente a revisão externa dos pares encaminhados.
 
@@ -152,7 +154,10 @@ em `PolicyEngineV3`, `build_engine_from_config` e `run_v3`. Sem override, o
 runner e o construtor por configuração usam `guardrails.policy_version` do YAML;
 quando a chave é omitida, o padrão é **v3**. O motor direto também usa **v3**.
 O perfil histórico `run_v3(..., p_cal="platt", policy_version="v3")` conserva
-as decisões anteriores. A opção explícita prevalece sobre o YAML.
+as decisões anteriores. A opção explícita prevalece sobre o YAML. Se o YAML
+declara v3.1 e a execução pede v3, o override histórico restaura custo LLM 0,25
+e guardas de nota 10/3, mesmo que o YAML configure custo 0,005 e guardas 9/5.
+Um YAML que já declara v3 continua respeitando seus próprios custos e guardas.
 
 ```python
 from gzcmd_record_linkage.runner_api import run_v3

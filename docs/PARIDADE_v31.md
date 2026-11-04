@@ -35,17 +35,28 @@ custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 | `guardrails.apply_guardrails` | Mesmo nome | Retorno antecipado v3.1 antes de regras temporais/homonímia |
 | `bands.BandAssigner.assign` | Mesmo nome, já existente | Bandas e inclusividade iguais; nenhuma mudança |
 | `config.load_config` | Mesmo nome | `guardrails.policy_version` omitido implica v3, não v3.1 |
-| `runner.build_engine_from_config` | Mesmo nome | Custos, erros, abstenção, dois orçamentos e override explícito |
-| `runner.run_v3` | Mesmo nome; alias em `runner_api` | Encaminha versão às guardas e motor; resumo inclui versão e orçamento humano |
+| `runner.build_engine_from_config` | Mesmo nome | Custos, erros, dois orçamentos; v3 explícita em YAML v3.1 restaura custo LLM 0,25 |
+| `runner.run_v3` | Mesmo nome; alias em `runner_api` | Encaminha versão; v3 explícita em YAML v3.1 restaura guardas 10/3; resumo inclui versão e orçamento humano |
 | `cli.build_parser`, `cli.main` | Mesmos nomes | `run --policy-version {v3,v3.1}`; omissão consulta YAML |
 
 Validação de probabilidades v3.1 antecede o cálculo de perdas no pacote para
 evitar avisos numéricos com infinito; a referência rejeita a mesma entrada no
 início de `_triage_bayes`. A saída para probabilidades válidas não é alterada.
-`Costs` aceita custo humano no construtor e o expõe por `human_review`, mas
-preserva a serialização histórica de três campos por `dataclasses.asdict`,
-exigida pelos testes e exemplos do notebook. Para serializar os quatro custos,
-inclua explicitamente a propriedade `human_review`.
+`Costs.human_review` é um campo real do dataclass, como na referência; participa
+de `asdict`, `replace`, igualdade e representação. O helper `nb_helpers.build_engine`
+preserva esse custo ao explorar outros custos. A única alteração em teste
+preexistente inclui o quarto campo na asserção de `asdict`, acompanhando o
+contrato público 0.4.0, sem mudar as ações históricas.
+
+A referência atual soma `e_unsure*L_h(p)` também na v3 (com erro humano zero,
+mas custo humano ainda presente). O pacote deliberadamente ignora `e_unsure`
+na v3 para preservar a expressão histórica da versão 0.3.0. Por isso a paridade
+v3 usa abstenção zero; a comparação v3.1 cobre também abstenção 0,2. Ambas as
+entradas do pacote, YAML e construtor `LLMError`, validam `e_unsure` em [0,1].
+Outra diferença intencional é a ordem das colunas: a referência insere
+`loss_match` e `loss_nonmatch` antes de `loss_llm`; o pacote só as acrescenta
+ao entrar na v3.1, após `evr`, preservando as colunas históricas v3. A comparação
+externa alinha as colunas pelo nome antes de conferir os valores.
 
 ## Bandas, guardas e decisão
 
@@ -81,6 +92,10 @@ calibrador ou taxas. O cenário atual da tese usa custo LLM 0,005, humano 1 e
 erros humanos 0,05. Para compará-lo, forneça os mesmos custos e taxas no YAML;
 as taxas externas da referência não são buscadas pelo pacote. A configuração
 de abstenção usa `e_unsure` dentro de cada taxa por banda.
+Quando o YAML declara v3.1 e há override explícito para v3, o runner restaura
+custo LLM 0,25 e guardas 10/3, como o `legacy_override` da referência. Esse
+override não altera os demais custos, taxas ou calibração. Um YAML que já
+declara v3 conserva seus custos e guardas configurados.
 
 O runner mantém seus métodos de calibração anteriores. Treinar Platt na entrada
 não constitui avaliação independente, embora seja mantido para reproduzir o
@@ -99,11 +114,21 @@ o padrão é `D:/git/phd-research`. A fixture importa via `sys.path`. Sem essa
 cópia, somente a comparação externa é pulada, com motivo explícito. Regressões,
 guardas, CLI e quatro ações continuam testados em qualquer instalação.
 
-O teste de paridade cruza 128 combinações de nota e p por cenário, seis bandas,
+O teste de paridade cruza 128 combinações de nota e p em quatro contextos de
+subescores/datas (512 pares por cenário), seis bandas,
 ambos os modos, quatro combinações de orçamentos e abstenção 0/0,2. Compara
 bandas, guardas, motivos, todas as colunas comuns e consumo dos dois orçamentos.
 Há 32 cenários parametrizados, dos quais 16 exercitam v3.1; v3 sempre usa
-abstenção zero, pois a versão histórica não tinha esse parâmetro.
+abstenção zero. Além das datas incompatíveis, há datas compatíveis com
+homonímia, concordância forte e subescores neutros. As asserções exigem a
+presença das guardas altas/baixas, temporalidade, homonímia, caps e seleção LLM;
+FORCE_REVIEW também é injetado fora dos caps e com EVR negativo.
+
+Os YAML em `tests/fixtures/` são snapshots: configuração do tag `v0.3.0`
+(`ad823eb`) e configuração v3.1 distribuída pelo motor de referência na data
+desta revisão. O teste de override compara todas as colunas e perdas,
+exatamente, tanto na API quanto na CLI, para os dois modos, sem depender de
+histórico Git ou arquivos externos na CI.
 
 As regressões locais fixam SHA-256 da sequência ordenada de ações do CSV
 versionado `data/synthetic/comparador_sintetico.csv` (607 potenciais pares),
@@ -120,5 +145,6 @@ de desempenho no serviço:
 Além das regressões, nesta portabilidade o motor do commit base `089d914` foi
 carregado separadamente e comparado ao novo motor no mesmo fluxo Platt do CSV,
 com `pandas.testing.assert_frame_equal(check_exact=True)`: todas as colunas
-históricas permaneceram exatamente iguais nos dois modos. Os testes existentes
-não foram alterados.
+históricas permaneceram exatamente iguais nos dois modos. A única alteração
+em teste existente foi a asserção de serialização dos quatro custos descrita
+acima; nenhum teste foi removido ou pulado para contornar regressões.
