@@ -18,7 +18,14 @@ from .classifier import ClassifierConfig, GZCMDClassifier
 from .config import GZCMDConfig, load_config
 from .guardrails import apply_guardrails
 from .loader import LoadConfig, load_comparador_csv
-from .policy_engine import Budget, Costs, LLMError, PolicyEngineV3
+from .policy_engine import (
+    Budget,
+    Costs,
+    HumanBudget,
+    HumanError,
+    LLMError,
+    PolicyEngineV3,
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,9 @@ class RunSummary:
     review_requested: int
     p_cal_method: str
     p_cal_params: dict[str, float] | None
+    human_used: int = 0
+    human_max: int | None = None
+    policy_version: str = "v3"
 
 
 def build_engine_from_config(
@@ -38,17 +48,22 @@ def build_engine_from_config(
     *,
     mode: str,
     llm_used: int = 0,
+    policy_version: str | None = None,
+    human_used: int = 0,
 ) -> PolicyEngineV3:
     if mode not in cfg.decision_policy.modes:
         known = ", ".join(sorted(cfg.decision_policy.modes.keys()))
         raise KeyError(f"Unknown mode '{mode}'. Known modes: {known}")
 
     mode_cfg = cfg.decision_policy.modes[mode]
+    policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
+    legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
 
     costs = Costs(
         false_positive=float(mode_cfg.false_positive_cost),
         false_negative=float(mode_cfg.false_negative_cost),
-        llm_review=float(mode_cfg.llm_review_cost),
+        llm_review=0.25 if legacy_override else float(mode_cfg.llm_review_cost),
+        human_review=float(mode_cfg.human_review_cost),
     )
 
     if cfg.llm_review.enabled:
@@ -63,6 +78,7 @@ def build_engine_from_config(
             llm_error_by_band[band] = LLMError(
                 e_fp=float(rates["e_fp"]),
                 e_fn=float(rates["e_fn"]),
+                e_unsure=float(rates.get("e_unsure", 0.0)),
             )
 
         if missing:
@@ -88,6 +104,9 @@ def build_engine_from_config(
         budget=budget,
         min_auto_match=mode_cfg.min_auto_match_threshold,
         max_auto_nonmatch=mode_cfg.max_auto_nonmatch_threshold,
+        policy_version=policy_version,
+        human_error=HumanError(mode_cfg.human_e_fp, mode_cfg.human_e_fn),
+        human_budget=HumanBudget(mode_cfg.human_max_pairs_per_window, human_used),
     )
 
 
@@ -106,8 +125,14 @@ def run_v3(
     ml_xgb_model_path: str | Path | None = None,
     save_ml_xgb_model_path: str | Path | None = None,
     classifier_config: ClassifierConfig | None = None,
+    policy_version: str | None = None,
+    human_used: int = 0,
 ) -> tuple[pd.DataFrame, RunSummary]:
     cfg = load_config(config_path)
+    policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
+    if policy_version not in {"v3", "v3.1"}:
+        raise ValueError("policy_version must be v3 or v3.1")
+    legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
     df = load_comparador_csv(Path(input_csv), cfg=LoadConfig(macd_enabled=macd_enabled))
 
     nota_raw = pd.to_numeric(get_nota_series(df), errors="coerce")
@@ -202,15 +227,19 @@ def run_v3(
     g = apply_guardrails(
         df,
         temporal_days=cfg.guardrails.temporal_days,
-        nota_always_match=cfg.guardrails.nota_always_match,
-        nota_always_nonmatch=cfg.guardrails.nota_always_nonmatch,
+        nota_always_match=10.0 if legacy_override else cfg.guardrails.nota_always_match,
+        nota_always_nonmatch=3.0 if legacy_override else cfg.guardrails.nota_always_nonmatch,
         homonimia_min_nota=cfg.guardrails.homonimia_min_nota,
         homonimia_year_gap=cfg.guardrails.homonimia_year_gap,
+        policy_version=policy_version,
     )
     df["guardrail"] = g.guardrail
     df["guardrail_reason"] = g.reason
 
-    engine = build_engine_from_config(cfg, mode=mode, llm_used=llm_used)
+    engine = build_engine_from_config(
+        cfg, mode=mode, llm_used=llm_used,
+        policy_version=policy_version, human_used=human_used,
+    )
     out = engine.triage(df)
 
     actions = out["action"].value_counts(dropna=False).to_dict()
@@ -232,5 +261,8 @@ def run_v3(
         review_requested=review_requested,
         p_cal_method=str(p_cal),
         p_cal_params=p_cal_params,
+        human_used=engine.human_budget.used,
+        human_max=engine.human_budget.max_pairs,
+        policy_version=policy_version,
     )
     return out, summary

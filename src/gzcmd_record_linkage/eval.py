@@ -233,7 +233,10 @@ def evaluate_v3_dataframe(
                     "calibration must be one of: platt, stub, ml_rf, ml_xgb"
                 )
 
-            engine = build_engine_from_config(cfg, mode=str(mode), llm_used=0)
+            # This evaluator's expected metrics cover the historical three actions.
+            engine = build_engine_from_config(
+                cfg, mode=str(mode), llm_used=0, policy_version="v3"
+            )
             out = engine.triage(test)
 
             yt = _ensure_binary_target(out).to_numpy(dtype=np.int8)

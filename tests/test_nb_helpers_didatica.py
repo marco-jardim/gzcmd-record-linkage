@@ -309,6 +309,7 @@ def test_build_engine_orcamento_novo_e_equivalencia(cfg):
     changed = nbh.build_engine(cfg, "vigilancia", c_fp=1, c_fn=2, c_llm=0, llm_max=5)
     assert asdict(changed.costs) == {
         "false_positive": 1, "false_negative": 2, "llm_review": 0,
+        "human_review": 1,
     }
     assert changed.budget.llm_max == 5
     disabled = replace(cfg, llm_review=replace(cfg.llm_review, enabled=False))

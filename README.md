@@ -10,15 +10,14 @@ um comparador; não executa blocagem nem gera potenciais pares a partir de duas 
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Política implementada nesta distribuição: **v3**, com três ações
-  (`MATCH`, `NONMATCH`, `LLM_REVIEW`)
+- Versão no repositório: **0.4.0**, ainda não publicada no PyPI
+- Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
-**A política v3.1 da tese não está incluída no pacote 0.3.0.** A implementação de
-quatro ações, incluindo revisão humana, está no diretório `gzcmd/` do
-[repositório da tese, ramo pos-qualificacao](https://github.com/marco-jardim/phd-research/tree/pos-qualificacao/gzcmd).
-A versão do pacote (0.3.0), a versão da política (v3 ou v3.1) e a versão do depósito
-de dados (3.0.0) não são intercambiáveis. Não se reproduzem os resultados v3.1 da
-tese apenas instalando este pacote.
+A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
+de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo ainda fornece
+0.3.0, somente com v3; o suporte v3.1 exige instalar o código 0.4.0 deste
+repositório. A paridade da política não inclui automaticamente os modelos,
+as probabilidades OOF nem as taxas empíricas dos experimentos da tese.
 
 ## Instalação
 
@@ -118,8 +117,10 @@ interpretador de regras: o runner chama `apply_guardrails` com `guardrails.param
 `calibration.by_band` não produz ajuste por banda nos métodos Platt.
 
 A saída acrescenta `band`, `p_cal`, `guardrail`, `guardrail_reason`, `action`,
-`base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. `evr` compara a
-perda da decisão automática com a perda da revisão. `review_requested=True` não
+`base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. Na v3.1 também
+inclui `loss_human`, `decision_reason`, `human_gain`, `selected_loss`, `loss_match`
+e `loss_nonmatch`. `evr` compara a melhor alternativa não LLM (incluindo humano
+na v3.1) com a perda LLM. `review_requested=True` não
 garante encaminhamento quando o orçamento se esgota; confira `action` e o resumo.
 O runner não executa automaticamente a revisão externa dos pares encaminhados.
 
@@ -148,21 +149,66 @@ uma aproximação para desenvolvimento, não calibração validada.
 
 ## Reprodução das políticas da tese
 
-Na API Python do pacote 0.3.0, `run_v3(..., p_cal="platt")` está disponível,
-mas o argumento `policy_version` **não existe**. Na CLI dessa versão, a opção
-supervisionada correspondente é `--p-cal fit_platt`; as opções da CLI e da API
-não são idênticas.
+Desde 0.4.0, a API aceita `policy_version="v3"` ou `policy_version="v3.1"`
+em `PolicyEngineV3`, `build_engine_from_config` e `run_v3`. Sem override, o
+runner e o construtor por configuração usam `guardrails.policy_version` do YAML;
+quando a chave é omitida, o padrão é **v3**. O motor direto também usa **v3**.
+O perfil histórico `run_v3(..., p_cal="platt", policy_version="v3")` conserva
+as decisões anteriores. A opção explícita prevalece sobre o YAML. Se o YAML
+declara v3.1 e a execução pede v3, o override histórico restaura custo LLM 0,25
+e guardas de nota 10/3, mesmo que o YAML configure custo 0,005 e guardas 9/5.
+Um YAML que já declara v3 continua respeitando seus próprios custos e guardas.
 
-O perfil histórico `p_cal="platt", policy_version="v3"` e a política v3.1 devem
-ser executados a partir do código `gzcmd/` do repositório da tese, com o commit,
-o YAML, os modelos e o particionamento registrados nos respectivos experimentos.
-Não adicione `policy_version="v3"` ou `policy_version="v3.1"` a uma chamada do
-pacote 0.3.0: isso resulta em argumento inesperado. O exemplo mínimo deste README
-delimita a funcionalidade efetivamente publicada, em vez de simular suporte v3.1.
+```python
+from gzcmd_record_linkage.runner_api import run_v3
+
+saida, resumo = run_v3(
+    input_csv="pares.csv", config_path="minha_config.yaml",
+    mode="vigilancia", p_cal="load_platt", platt_model_path="platt.json",
+    policy_version="v3.1",
+)
+```
+
+O modelo salvo deve ter sido ajustado em dados independentes da entrada, se o
+objetivo for avaliação. A política consome `p_cal`; selecioná-la não cria
+probabilidades out-of-fold nem valida a calibração.
+
+```console
+gzcmd run --input pares.csv --mode vigilancia --p-cal load_platt --platt-model platt.json --policy-version v3.1 --output decisoes.csv
+```
+
+### Política v3.1 de quatro ações
+
+As ações são `MATCH`, `NONMATCH`, `LLM_REVIEW` e `DEFERRED` (encaminhamento direto
+ao revisor humano, não descarte). Nota < 5 determina `NONMATCH`; nota >= 9 com
+`p_cal >= 0.9` determina `MATCH`. Nota alta sem essa consistência volta à
+comparação de perdas. Filtros temporais e de homonímia pertencem somente à v3.
+
+Fora das guardas, a v3.1 compara as perdas esperadas das quatro ações. Empates
+preferem `MATCH`, `NONMATCH`, revisão humana e, por último, LLM. As vagas LLM
+são distribuídas por ganho positivo sobre a melhor alternativa não LLM, com
+ordenação estável. A falta de vagas humanas ou LLM aciona o fallback documentado
+em [PARIDADE_v31.md](docs/PARIDADE_v31.md), não encaminhamento humano cego.
+Os caps legados e `FORCE_REVIEW` não substituem o argmin v3.1.
+
+O YAML aceita `decision_policy.modes.<modo>.costs.human_review` (padrão 1),
+`human_error: {e_fp: 0.05, e_fn: 0.05}` e
+`human_budget: {max_pairs_per_window: null}` (capacidade ilimitada).
+`llm_review.reliability.error_rates_by_band.<banda>.e_unsure` (padrão zero)
+acrescenta à perda LLM a carga humana esperada após abstenção. As taxas de erro
+humano são hipóteses, não concordância medida. `human_used` permite continuar
+o orçamento entre lotes; `RunSummary` informa consumo humano e versão da política.
+
+O YAML distribuído conserva os custos e taxas fixas da v3, inclusive custo LLM
+0,25, para não alterar o perfil histórico. Para reproduzir um cenário v3.1 da
+tese, forneça seu YAML com custo LLM 0,005, taxas por banda, probabilidades OOF,
+modelos e particionamento correspondentes. Taxas empíricas externas não são
+carregadas automaticamente. O comando `eval` permanece um avaliador **v3** de
+três ações; não apresenta métricas v3.1 como se fossem avaliação completa.
 
 Preserve versões das dependências, sementes e grupos de treinamento/avaliação.
-As taxas de erro do revisor e os custos são hipóteses operacionais; não substituem
-auditoria. Nenhum resultado sintético deste README estima desempenho no serviço.
+Custos e erros dos revisores são hipóteses operacionais; não substituem auditoria.
+Nenhum resultado sintético deste README estima desempenho no serviço.
 
 ## Licença, depósito de dados e citação
 
@@ -175,7 +221,8 @@ pacote:
 - Versão 3.0.0: [10.5281/zenodo.23928226](https://doi.org/10.5281/zenodo.23928226)
 - DOI conceito: [10.5281/zenodo.18652286](https://doi.org/10.5281/zenodo.18652286)
 
-Ao utilizar o pacote, cite a versão 0.3.0 e o
+Ao utilizar o pacote, cite a versão efetivamente usada (0.3.0 publicada ou
+0.4.0 do repositório, com seu commit) e o
 [repositório de software](https://github.com/marco-jardim/gzcmd-record-linkage).
 Para o método e os experimentos, cite também a tese de Marco Elisio Oliveira
 Jardim, no Programa de Pós-Graduação em Saúde Coletiva, IESC/UFRJ, e identifique o

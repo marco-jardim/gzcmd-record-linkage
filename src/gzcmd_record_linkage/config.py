@@ -31,6 +31,10 @@ class ModePolicyConfig:
     min_auto_match_threshold: float | None
     max_auto_nonmatch_threshold: float | None
     llm_max_calls_per_window: int
+    human_review_cost: float = 1.0
+    human_e_fp: float = 0.05
+    human_e_fn: float = 0.05
+    human_max_pairs_per_window: int | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,11 @@ class GuardrailsParams:
     nota_always_nonmatch: float = 3.0
     homonimia_min_nota: float = 7.0
     homonimia_year_gap: float = 5.0
+    policy_version: str = "v3"
+
+    def __post_init__(self) -> None:
+        if self.policy_version not in {"v3", "v3.1"}:
+            raise ValueError("policy_version must be v3 or v3.1")
 
 
 @dataclass(frozen=True)
@@ -247,6 +256,16 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
             min_auto_match_threshold=min_auto_match_threshold,
             max_auto_nonmatch_threshold=max_auto_nonmatch_threshold,
             llm_max_calls_per_window=int(llm_budget["max_calls_per_window"]),
+            human_review_cost=float(costs.get("human_review", 1.0)),
+            human_e_fp=float(_as_mapping(
+                cfg.get("human_error"), field="human_error"
+            ).get("e_fp", 0.05)),
+            human_e_fn=float(_as_mapping(
+                cfg.get("human_error"), field="human_error"
+            ).get("e_fn", 0.05)),
+            human_max_pairs_per_window=_as_mapping(
+                cfg.get("human_budget"), field="human_budget"
+            ).get("max_pairs_per_window"),
         )
 
     return DecisionPolicyConfig(modes=parsed)
@@ -267,6 +286,12 @@ def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
             rate_cfg, field=f"llm_review.reliability.error_rates_by_band[{band}]"
         )
         rates[str(band)] = {"e_fp": float(cfg["e_fp"]), "e_fn": float(cfg["e_fn"])}
+        if "e_unsure" in cfg:
+            rates[str(band)]["e_unsure"] = float(cfg["e_unsure"])
+            if not math.isfinite(rates[str(band)]["e_unsure"]) or not (
+                0 <= rates[str(band)]["e_unsure"] <= 1
+            ):
+                raise ValueError("e_unsure must be a finite probability within [0,1]")
 
     return LLMReviewConfig(enabled=enabled, error_rates_by_band=rates)
 
@@ -304,6 +329,7 @@ def _load_guardrails_params(data: Mapping[str, Any]) -> GuardrailsParams:
     )
 
     return GuardrailsParams(
+        policy_version=str(guardrails.get("policy_version", "v3")),
         temporal_days=temporal_days,
         nota_always_match=nota_always_match,
         nota_always_nonmatch=nota_always_nonmatch,

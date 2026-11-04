@@ -133,6 +133,7 @@ calibration:
   output_column: "p_cal"
 
 guardrails:
+  policy_version: v3
   # Deterministic safety rules (PII-free), to avoid catastrophic false positives.
   params:
     temporal_days: 180
@@ -166,6 +167,9 @@ decision_policy:
         false_positive: 10.0
         false_negative: 50.0
         llm_review: 0.25
+        human_review: 1.0
+      human_error: {e_fp: 0.05, e_fn: 0.05}
+      human_budget: {max_pairs_per_window: null}
       auto:
         # optional hard caps to keep behavior sane under drift
         min_auto_match_threshold: 0.85
@@ -178,6 +182,9 @@ decision_policy:
         false_positive: 100.0
         false_negative: 20.0
         llm_review: 0.25
+        human_review: 1.0
+      human_error: {e_fp: 0.05, e_fn: 0.05}
+      human_budget: {max_pairs_per_window: null}
       auto:
         min_auto_match_threshold: 0.95
         max_auto_nonmatch_threshold: 0.10
