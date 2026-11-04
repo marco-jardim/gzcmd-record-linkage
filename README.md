@@ -6,23 +6,23 @@ um comparador; não executa blocagem nem gera potenciais pares a partir de duas 
 
 ## Versão e escopo
 
-- Distribuição PyPI: `gzcmd-record-linkage==0.3.0`
+- Distribuição PyPI: `gzcmd-record-linkage==0.4.0`
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.4.0**, ainda não publicada no PyPI
+- Versão no repositório e no PyPI: **0.4.0**
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
-de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo ainda fornece
-0.3.0, somente com v3; o suporte v3.1 exige instalar o código 0.4.0 deste
-repositório. A paridade da política não inclui automaticamente os modelos,
-as probabilidades OOF nem as taxas empíricas dos experimentos da tese.
+de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo fornece
+0.4.0, com suporte às políticas v3 e v3.1. A paridade da política não inclui
+automaticamente os modelos, as probabilidades OOF nem as taxas empíricas dos
+experimentos da tese.
 
 ## Instalação
 
 ```console
-python -m pip install gzcmd-record-linkage==0.3.0
+python -m pip install gzcmd-record-linkage==0.4.0
 ```
 
 Para desenvolvimento, a partir deste repositório:
@@ -221,8 +221,8 @@ pacote:
 - Versão 3.0.0: [10.5281/zenodo.23928226](https://doi.org/10.5281/zenodo.23928226)
 - DOI conceito: [10.5281/zenodo.18652286](https://doi.org/10.5281/zenodo.18652286)
 
-Ao utilizar o pacote, cite a versão efetivamente usada (0.3.0 publicada ou
-0.4.0 do repositório, com seu commit) e o
+Ao utilizar o pacote, cite a versão efetivamente usada (0.4.0 publicada ou
+outra versão identificada, com seu commit quando instalada do repositório) e o
 [repositório de software](https://github.com/marco-jardim/gzcmd-record-linkage).
 Para o método e os experimentos, cite também a tese de Marco Elisio Oliveira
 Jardim, no Programa de Pós-Graduação em Saúde Coletiva, IESC/UFRJ, e identifique o
