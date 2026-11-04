@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -60,6 +60,7 @@ def apply_guardrails(
     nota_always_nonmatch: float = 3.0,
     homonimia_min_nota: float = 7.0,
     homonimia_year_gap: float = 5.0,
+    policy_version: str = "v3",
 ) -> GuardrailOutput:
     """Compute guardrails used by the policy engine.
 
@@ -76,6 +77,9 @@ def apply_guardrails(
     - NOME subscores
     """
 
+    if policy_version not in {"v3", "v3.1"}:
+        raise ValueError("policy_version must be v3 or v3.1")
+
     out_guardrail = pd.Series(pd.NA, index=df.index, dtype="string")
     out_reason = pd.Series("", index=df.index, dtype="string")
 
@@ -86,6 +90,16 @@ def apply_guardrails(
         out_reason = out_reason.mask(mask2, reason)
 
     nota = _num(df, "nota final").fillna(_num(df, "nota_final"))
+
+    if policy_version == "v3.1":
+        # Relaxed probability consistency; no exact DOB/municipality requirement.
+        # Unqualified high scores go to Bayesian argmin, NOT mandatory review.
+        _set(nota.lt(5), GuardrailDecision.ALWAYS_NONMATCH.value, "nota_final_low")
+        _set(nota.ge(9) & _num(df, "p_cal").ge(0.9),
+             GuardrailDecision.ALWAYS_MATCH.value, "nota_high_probability_consistent")
+        out_reason = out_reason.mask(nota.ge(9) & out_guardrail.isna(), "high_probability_inconsistent")
+        out_reason = out_reason.mask(out_reason.eq(""), pd.NA)
+        return GuardrailOutput(guardrail=out_guardrail, reason=out_reason)
 
     # 1) temporal_filter: death before diagnosis minus buffer
     dt_obito = df.get("R_DTOBITO_dt")

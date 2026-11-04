@@ -30,6 +30,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="Run v3 policy pipeline")
     run.add_argument(
+        "--policy-version", choices=["v3", "v3.1"], default=None,
+        help="Decision policy (default: config guardrails.policy_version, or v3)",
+    )
+    run.add_argument(
         "--input",
         default=str(Path("data") / "COMPARADORSEMIDENT.csv"),
         help="Input CSV path (default: data/COMPARADORSEMIDENT.csv)",
@@ -212,6 +216,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_summary(summary) -> None:
+    print(f"policy_version={summary.policy_version}")
+    print(f"human_used={summary.human_used}/{summary.human_max}")
     print(f"rows={summary.rows}")
     print(f"llm_used={summary.llm_used}/{summary.llm_max}")
     print(f"review_requested={summary.review_requested}")
@@ -233,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             macd_enabled=not args.no_macd,
             llm_used=args.llm_used,
             p_cal=args.p_cal,
+            policy_version=args.policy_version,
             platt_model_path=(args.platt_model or None),
             save_platt_model_path=(args.save_platt_model or None),
             ml_rf_model_path=(args.ml_rf_model or None),
