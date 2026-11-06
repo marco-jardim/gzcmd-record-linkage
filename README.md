@@ -27,7 +27,8 @@ mecanismos implementados:
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório e no PyPI: **0.4.0**
+- Versão no repositório: **0.4.1** (ainda não publicada)
+- Versão no PyPI: **0.4.0**
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
