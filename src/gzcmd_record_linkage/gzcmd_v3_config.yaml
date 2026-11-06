@@ -236,10 +236,11 @@ llm_review:
       high:      { e_fp: 0.01, e_fn: 0.03 }
 
 consistency:
-  # Optional "assignment-lite" constraints
+  # RESERVED, NOT IMPLEMENTED: this block is not consumed by the runner/engine.
+  # It does not enforce N:1 cardinality or send probability conflicts to an LLM.
   enabled: true
   strategy: "top1_per_left_then_top1_per_right"
-  conflict_margin_delta: 0.03     # if top-1 vs top-2 probabilities differ by less than this, send to LLM
+  conflict_margin_delta: 0.03     # reserved, not implemented; no decision effect
 
 monitoring:
   drift:

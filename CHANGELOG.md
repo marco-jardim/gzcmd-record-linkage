@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 (no repositório, ainda não publicada)
+
+- Correção do dossiê para não incluir colunas inexistentes no extrato histórico.
+- Documentação de `consistency.conflict_margin_delta` como configuração reservada,
+  sem cardinalidade N:1 nem resolução de conflitos por margem de probabilidade.
+- Documentação dos defaults dos revisores no YAML e de sua distinção em relação
+  aos parâmetros dos experimentos da tese.
+- Nome histórico GZ-CMD e limites dos termos da expansão explicitados no README.
+
 ## 0.4.0 (no repositório, ainda não publicada)
 
 - Política v3.1 (quatro ações) via `policy_version`; padrão permanece v3.

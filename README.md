@@ -4,13 +4,31 @@ Componentes Python para pós-processamento de potenciais pares de *linkage* e
 encaminhamento da área cinza para revisão. O pacote recebe escores produzidos por
 um comparador; não executa blocagem nem gera potenciais pares a partir de duas bases.
 
+## Nome e origem
+
+GZ-CMD tem como nome histórico "Grey-Zone: Calibrated Mixture-of-experts +
+Conformal Deferral + Constrained Matching". Os termos não correspondem todos a
+mecanismos implementados:
+
+- **Calibrated**: calibração de probabilidades, com Platt no perfil histórico e
+  calibração isotônica no perfil v3.1.
+- **Mixture-of-experts**: uso livre do termo para a articulação de regras,
+  classificador e revisor sob uma política, sem mecanismo aprendido de seleção
+  entre especialistas.
+- **Conformal Deferral**: o encaminhamento à revisão humana decorre de
+  probabilidades calibradas, custos e orçamento, não de predição conformal;
+  não há quantis de não conformidade nem garantia de cobertura.
+- **Constrained Matching**: guardas determinísticas e limites de revisão, sem
+  cardinalidade N:1 nem resolução de conflitos por margem de probabilidade.
+
 ## Versão e escopo
 
 - Distribuição PyPI: `gzcmd-record-linkage==0.4.0`
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório e no PyPI: **0.4.0**
+- Versão no repositório: **0.4.1** (ainda não publicada)
+- Versão no PyPI: **0.4.0**
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
@@ -115,6 +133,30 @@ Nem todo bloco descritivo do YAML é executado. Expressões textuais em
 `guardrails.always_match`, `always_nonmatch` e `risky_if` não constituem um
 interpretador de regras: o runner chama `apply_guardrails` com `guardrails.params`.
 `calibration.by_band` não produz ajuste por banda nos métodos Platt.
+
+O bloco `consistency`, inclusive `conflict_margin_delta`, é reservado e não
+implementado. Não impõe cardinalidade N:1 nem resolve conflitos por margem de
+probabilidade. A presença desses campos no YAML não significa que estejam ativos.
+
+### Dossiê histórico e parâmetros do experimento
+
+O construtor do dossiê mantém a fronteira histórica de 14 dos 29 subescores do
+extrato: três de nome, três de nome da mãe, um de nascimento, seis de endereço e
+um municipal, além dos compostos, indicadores e nota final. O municipal é enviado
+como `municipality`. Não entram subescores de raridade, frequência, abreviação e
+fragmentos muito parecidos, aproximações/inversões de data ou UF/proximidade
+municipal. Componentes separados de ano/mês/dia e o campo composto de primeiro e
+último fragmentos não existem nesse extrato; não são entradas adicionais do
+construtor. Campos nominais são excluídos, mas isso não torna os subescores e o
+pseudônimo de par dados anônimos nem autoriza seu envio a terceiros.
+
+O YAML distribuído é um padrão da biblioteca, não a configuração dos runs da
+tese. Os três revisores estão descritos nele com `gpt-5.2-pro`, `temperature: 0.0`
+e `max_tokens: 500`; esses defaults foram preservados. O experimento da tese com
+Claude Haiku 5.5 omitiu `temperature` e usou `max_tokens: 2500`, com instruções v4
+e sem `model_outputs` no dossiê. Reproduzir esse experimento exige seus runners,
+instruções, coortes, calibração e taxas empíricas; não basta carregar o YAML do
+pacote ou trocar o nome do modelo.
 
 A saída acrescenta `band`, `p_cal`, `guardrail`, `guardrail_reason`, `action`,
 `base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. Na v3.1 também

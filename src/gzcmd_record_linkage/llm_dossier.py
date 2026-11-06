@@ -1,7 +1,14 @@
 """Build a JSON dossier per candidate pair for LLM clerical review.
 
-The dossier contains ONLY linkage sub-scores and model outputs — never PII.
+The dossier contains linkage sub-scores, model outputs and an unsalted pair
+pseudonym. It excludes nominal source fields, not all personal data.
 It is the sole input the LLM sees, enforcing a strict information boundary.
+
+The historical extract supplies 14 of its 29 sub-scores: three name, three
+mother-name, one birth-date, six address and one municipality score. Rare,
+common, very-similar and abbreviated name scores, approximate/inverted birth
+dates and UF/proximity municipality scores are not sent. Do not add these
+fields retroactively: the historical v3/v4 runs depend on this boundary.
 
 Usage::
 
@@ -16,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import pandas as pd
@@ -41,20 +48,15 @@ _NAME_COLS = [
     "NOME qtd frag iguais",
     "NOME prim frag igual",
     "NOME ult frag igual",
-    "NOME prim ult frag igual",
 ]
 
 _MOTHER_COLS = [
     "NOMEMAE qtd frag iguais",
     "NOMEMAE prim frag igual",
     "NOMEMAE ult frag igual",
-    "NOMEMAE prim ult frag igual",
 ]
 
 _DOB_COLS = [
-    "DTNASC ano igual",
-    "DTNASC mes igual",
-    "DTNASC dia igual",
     "DTNASC dt iguais",
 ]
 
@@ -359,7 +361,7 @@ def build_dossiers(
         subset = df
 
     dossiers: list[Dossier] = []
-    for idx, row in subset.iterrows():
+    for _idx, row in subset.iterrows():
         dossiers.append(build_dossier(row, include_macd=include_macd))
     return dossiers
 
