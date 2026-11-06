@@ -4,6 +4,23 @@ Componentes Python para pós-processamento de potenciais pares de *linkage* e
 encaminhamento da área cinza para revisão. O pacote recebe escores produzidos por
 um comparador; não executa blocagem nem gera potenciais pares a partir de duas bases.
 
+## Nome e origem
+
+GZ-CMD tem como nome histórico "Grey-Zone: Calibrated Mixture-of-experts +
+Conformal Deferral + Constrained Matching". Os termos não correspondem todos a
+mecanismos implementados:
+
+- **Calibrated**: calibração de probabilidades, com Platt no perfil histórico e
+  calibração isotônica no perfil v3.1.
+- **Mixture-of-experts**: uso livre do termo para a articulação de regras,
+  classificador e revisor sob uma política, sem mecanismo aprendido de seleção
+  entre especialistas.
+- **Conformal Deferral**: o encaminhamento à revisão humana decorre de
+  probabilidades calibradas, custos e orçamento, não de predição conformal;
+  não há quantis de não conformidade nem garantia de cobertura.
+- **Constrained Matching**: guardas determinísticas e limites de revisão, sem
+  cardinalidade N:1 nem resolução de conflitos por margem de probabilidade.
+
 ## Versão e escopo
 
 - Distribuição PyPI: `gzcmd-record-linkage==0.4.0`
