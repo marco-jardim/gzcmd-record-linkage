@@ -116,6 +116,30 @@ Nem todo bloco descritivo do YAML é executado. Expressões textuais em
 interpretador de regras: o runner chama `apply_guardrails` com `guardrails.params`.
 `calibration.by_band` não produz ajuste por banda nos métodos Platt.
 
+O bloco `consistency`, inclusive `conflict_margin_delta`, é reservado e não
+implementado. Não impõe cardinalidade N:1 nem resolve conflitos por margem de
+probabilidade. A presença desses campos no YAML não significa que estejam ativos.
+
+### Dossiê histórico e parâmetros do experimento
+
+O construtor do dossiê mantém a fronteira histórica de 14 dos 29 subescores do
+extrato: três de nome, três de nome da mãe, um de nascimento, seis de endereço e
+um municipal, além dos compostos, indicadores e nota final. O municipal é enviado
+como `municipality`. Não entram subescores de raridade, frequência, abreviação e
+fragmentos muito parecidos, aproximações/inversões de data ou UF/proximidade
+municipal. Componentes separados de ano/mês/dia e o campo composto de primeiro e
+último fragmentos não existem nesse extrato; não são entradas adicionais do
+construtor. Campos nominais são excluídos, mas isso não torna os subescores e o
+pseudônimo de par dados anônimos nem autoriza seu envio a terceiros.
+
+O YAML distribuído é um padrão da biblioteca, não a configuração dos runs da
+tese. Os três revisores estão descritos nele com `gpt-5.2-pro`, `temperature: 0.0`
+e `max_tokens: 500`; esses defaults foram preservados. O experimento da tese com
+Claude Haiku 5.5 omitiu `temperature` e usou `max_tokens: 2500`, com instruções v4
+e sem `model_outputs` no dossiê. Reproduzir esse experimento exige seus runners,
+instruções, coortes, calibração e taxas empíricas; não basta carregar o YAML do
+pacote ou trocar o nome do modelo.
+
 A saída acrescenta `band`, `p_cal`, `guardrail`, `guardrail_reason`, `action`,
 `base_choice`, `base_loss`, `loss_llm`, `evr` e `review_requested`. Na v3.1 também
 inclui `loss_human`, `decision_reason`, `human_gain`, `selected_loss`, `loss_match`
