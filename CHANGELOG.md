@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Adição de `ranking.py` como utilitário opt-in de ordenação de filas já
+  selecionadas: RRF, intercalação com deduplicação, fila adaptativa de Thompson,
+  validação de permutações e `review_queue` para DataFrames.
+- Desempate de escores e RRF por embaralhamento com semente fixa; feedback
+  binário de Thompson apenas para o braço selecionado, com janela por braço.
+- Política, padrões, CLI, configuração e versão 0.4.1 preservados; o modo
+  `evr` do utilitário mantém a ordem recebida sem recalcular decisões.
+
 ## 0.4.1 (no repositório, ainda não publicada)
 
 - Correção do dossiê para não incluir colunas inexistentes no extrato histórico.

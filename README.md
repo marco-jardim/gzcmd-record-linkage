@@ -166,6 +166,54 @@ na v3.1) com a perda LLM. `review_requested=True` não
 garante encaminhamento quando o orçamento se esgota; confira `action` e o resumo.
 O runner não executa automaticamente a revisão externa dos pares encaminhados.
 
+## Ordenação da fila de revisão
+
+A ordenação padrão da política continua por `evr` (e, na v3.1, pelos ganhos
+humanos e de fallback). Essa ordenação distribui orçamento, não é substituída
+pela fusão. O perfil histórico `p_cal="platt"`, `policy_version="v3"` permanece
+inalterado. Não há nova chave de configuração nem opção CLI: o módulo
+`gzcmd_record_linkage.ranking` é um utilitário opt-in para uma fila de revisão
+humana já selecionada pelo chamador, por exemplo, os pares abaixo de seu corte.
+
+RRF (*Reciprocal Rank Fusion*) soma `1 / (k + posição)` em cada ordenação,
+com posições iniciadas em 1 e `k=60`. Pode ser usada para combinar prioridades
+de escores em escalas diferentes, sem recalibrá-los. Não há garantia de redução
+do trabalho de revisão; avalie a ordenação em dados independentes.
+
+```python
+from gzcmd_record_linkage.ranking import review_queue
+
+# O chamador define o corte e a população elegível; maior escore vem primeiro.
+abaixo_do_corte = pares.loc[pares["nota_final"] < corte]
+fila = review_queue(
+    abaixo_do_corte, scores=["nota_final", "p_cal"], method="rrf", seed=42,
+)
+```
+
+`review_queue` devolve uma cópia reordenada, sem alterar ações, colunas, índices
+ou orçamento. `method="interleave"` alterna as filas, pulando itens já emitidos;
+`method="evr"` preserva exatamente a ordem recebida, sem recalcular EVR nem
+classificar novamente a saída da política. O padrão do utilitário é `rrf`,
+mas ele não é chamado automaticamente pelo motor ou pelo runner.
+
+`rrf` e `interleave` recebem ordens completas de IDs posicionais `0..n-1`;
+para vetores de escores alinhados aos mesmos itens, use `input_kind="scores"`.
+O parâmetro explícito evita confundir escores inteiros com permutações.
+Empates de escores e de RRF seguem a prioridade dos IDs após embaralhamento
+com `seed=42` por padrão, não a ordem original das linhas nem os rótulos.
+A reprodução exige IDs posicionais e sementes iguais. `validate_order(order, n)`
+rejeita omissões, duplicações e IDs inválidos.
+
+`ThompsonQueue(ordens, window=200, prior=(1, 1), seed=42)` oferece uma fila
+adaptativa: chame `next()` e depois `update(item, label)`, com rótulo binário
+(1 para vínculo confirmado). Somente o braço sorteado recebe a recompensa;
+`window` limita as últimas respostas recebidas por braço (`None` mantém todas).
+Itens reservados não se repetem globalmente, mesmo antes do feedback;
+`next()` lança `StopIteration` ao esgotar a fila. Respostas podem chegar fora
+de ordem, mas cada item só pode ser atualizado uma vez. A classe não lê
+gabaritos nem executa revisão externa. Diferentemente das funções de fusão,
+ela mantém estado local entre chamadas, sem I/O.
+
 ## Linha de comando
 
 A CLI existe na versão 0.3.0 e oferece `run`, `fit-calibration` e `eval`:
