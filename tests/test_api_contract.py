@@ -16,6 +16,7 @@ from gzcmd_record_linkage.calibration import (
 from gzcmd_record_linkage.config import GZCMDConfig, load_config
 from gzcmd_record_linkage.guardrails import apply_guardrails
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
+from gzcmd_record_linkage.ranking import review_queue
 from gzcmd_record_linkage.runner import build_engine_from_config
 
 RAW_COLUMNS = [
@@ -618,6 +619,8 @@ def test_triage_contract(tmp_path: Path, cfg: GZCMDConfig) -> None:
         "LLM_REVIEW",
     }
     assert "action" not in df.columns
+    preserved = review_queue(triaged, method="evr")
+    assert preserved.to_csv(index=True).encode() == triaged.to_csv(index=True).encode()
 
 
 def test_pcal_methods_in_unit_interval(tmp_path: Path, cfg: GZCMDConfig) -> None:

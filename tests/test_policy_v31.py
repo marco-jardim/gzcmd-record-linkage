@@ -26,6 +26,7 @@ from gzcmd_record_linkage.policy_engine import (
     LLMError,
     PolicyEngineV3,
 )
+from gzcmd_record_linkage.ranking import review_queue
 from gzcmd_record_linkage.runner import build_engine_from_config, run_v3
 
 CONFIG = str(files("gzcmd_record_linkage") / "gzcmd_v3_config.yaml")
@@ -294,6 +295,9 @@ def test_versioned_synthetic_regression(mode, version, digest, human_used):
     assert len(out) == 607
     assert hashlib.sha256("\n".join(out.action).encode()).hexdigest() == digest
     assert summary.human_used == human_used
+    # Standalone EVR mode preserves every serialized field, not only actions.
+    preserved = review_queue(out, method="evr")
+    assert preserved.to_csv(index=True).encode() == out.to_csv(index=True).encode()
 
 
 def test_config_selection_and_override(tmp_path):
