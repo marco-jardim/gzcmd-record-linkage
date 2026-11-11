@@ -1458,7 +1458,11 @@ A função `mesma_carga` dá a cada fila a carga da variante e compara pares ver
 comparacoes = {}
 for modo, (decisoes, _) in politicas.items():
     tabela = nf.mesma_carga(abaixo, ordens, decisoes).set_index("estratégia")
-    tabela["revisões para igualar a variante"] = tabela["revisões para igualar a variante"].astype("Int64")
+    # Inteiros e vazio em coluna object: com Int64, o mostrar recebia floats e exibia "167,000".
+    tabela["revisões para igualar a variante"] = pd.Series(
+        [None if pd.isna(v) else int(v) for v in tabela["revisões para igualar a variante"]],
+        index=tabela.index, dtype=object,
+    )
     comparacoes[modo] = tabela
     print(f"Modo {NOMES_MODO[modo]}:")
     mostrar(tabela)
@@ -1466,6 +1470,7 @@ for modo, (decisoes, _) in politicas.items():
 for modo, tabela in comparacoes.items():
     variante = tabela.loc["v3.1, MATCH do LLM ao humano"]
     carga, rec_var = int(variante["revisões humanas"]), int(variante["pares verdadeiros recuperados"])
+    fp_auto = int(variante["falsos positivos"])
     rec_filas = {fila: int(tabela.loc[f"fila {fila}", "pares verdadeiros recuperados"]) for fila in ordens}
     fp_llm = int(resumos.loc["falsos positivos do LLM", modo])
     fp_total = int(tabela.loc["v3.1, LLM aceita o MATCH", "falsos positivos"])
@@ -1478,23 +1483,39 @@ for modo, tabela in comparacoes.items():
         print("   Leitura: a automação não recupera mais que a fila O3 na mesma carga.")
     else:
         print(f"   Leitura: a automação recupera {inteiro(diferenca_o3)} PAR = 2 a mais que a fila O3 "
-              f"na mesma carga; veja quantas revisões a fila precisaria para igualá-la.")
+              f"na mesma carga (a fila chega a {pct(rec_filas['O3'] / rec_var)} do que a variante recupera) "
+              f"e aceita {inteiro(fp_auto)} vínculos falsos sem revisor humano; veja quantas revisões "
+              f"a fila precisaria para igualá-la.")
 
-rec_variante_vig = int(comparacoes["vigilancia"].loc["v3.1, MATCH do LLM ao humano", "pares verdadeiros recuperados"])
+variante_vig = comparacoes["vigilancia"].loc["v3.1, MATCH do LLM ao humano"]
+rec_variante_vig = int(variante_vig["pares verdadeiros recuperados"])
+fp_auto_vig = int(variante_vig["falsos positivos"])
 rec_o3_vig = int(comparacoes["vigilancia"].loc["fila O3", "pares verdadeiros recuperados"])
 confere("na vigilância, aceitar o MATCH do LLM sem revisor humano acrescenta falsos positivos",
         resumos.loc["falsos positivos do LLM", "vigilancia"] > 0)
-confere("na vigilância, na mesma carga humana, a automação recupera no máximo um PAR = 2 a mais que O3",
-        rec_variante_vig - rec_o3_vig <= 1)""",
+confere("na vigilância, na mesma carga humana, a fila O3 recupera pelo menos três quartos "
+        "dos PAR = 2 que a automação recupera",
+        rec_o3_vig >= 0.75 * rec_variante_vig)
+confere("na vigilância, os MATCH automáticos aceitam mais vínculos falsos do que os PAR = 2 "
+        "que a automação recupera a mais que O3",
+        fp_auto_vig > rec_variante_vig - rec_o3_vig)""",
     ),
     (
         "md",
         """\
-**Leitura.** Na vigilância, na mesma carga humana, a automação recupera no máximo um PAR = 2 a mais que a fila O3 (conferido acima): não reduz a revisão manual além do que a ordenação já reduz, mesmo com a simplificação que a favorece. Na confirmação, leia a diferença impressa e a coluna de revisões para igualar a variante, que diz quanto esforço a mais a fila precisaria. Quando o LLM aceita o `MATCH` sozinho, ele acrescenta falsos positivos próprios (conferido na vigilância; na confirmação, leia a contagem impressa). A célula seguinte mede a proporção de pares verdadeiros entre as respostas `MATCH` do LLM simulado, isto é, o VPP dessas respostas.""",
+**Leitura.** Na vigilância, na mesma carga humana, a fila O3 recupera quase tantos PAR = 2 quanto a automação: pelo menos três quartos (conferido acima), mesmo com a simplificação que favorece a política. Os poucos pares a mais da automação vêm com mais vínculos falsos aceitos sem revisor humano do que pares ganhos (também conferido). A coluna de revisões para igualar a variante diz quantas revisões a fila precisaria para alcançar esses últimos pares, que costumam ficar no fundo da fila. Os números exatos mudam um pouco entre ambientes, porque a probabilidade fora da amostra é refeita com o XGBoost e o scikit-learn instalados: na execução de referência a diferença na vigilância foi de um par, e a célula imprime a desta execução. Na confirmação, leia a diferença impressa e a mesma coluna. Quando o LLM aceita o `MATCH` sozinho, ele acrescenta falsos positivos próprios (conferido na vigilância; na confirmação, leia a contagem impressa). A célula seguinte mede a proporção de pares verdadeiros entre as respostas `MATCH` do LLM simulado, isto é, o VPP dessas respostas.""",
     ),
     (
         "code",
         """\
+def intervalo_wilson(acertos, n, z=1.96):
+    # IC 95% de Wilson para uma proporção; bem-comportado com poucos casos.
+    p = acertos / n
+    centro = (p + z * z / (2 * n)) / (1 + z * z / n)
+    meia = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return centro - meia, centro + meia
+
+
 vpp_llm = {}
 for modo, (decisoes, _) in politicas.items():
     match_llm = decisoes["resposta_llm"].eq("MATCH").to_numpy()
@@ -1502,17 +1523,19 @@ for modo, (decisoes, _) in politicas.items():
     n_match, acertos = int(match_llm.sum()), int((match_llm & verdadeiro).sum())
     vpp_llm[modo] = acertos / n_match if n_match else float("nan")
     if n_match:
+        inferior, superior = intervalo_wilson(acertos, n_match)
         print(f"{NOMES_MODO[modo]}: o LLM simulado respondeu MATCH {inteiro(n_match)} vezes; "
-              f"{inteiro(acertos)} eram pares verdadeiros (VPP = {pct(vpp_llm[modo])}).")
+              f"{inteiro(acertos)} eram pares verdadeiros (VPP = {pct(vpp_llm[modo])}; "
+              f"IC 95% de Wilson: {pct(inferior)} a {pct(superior)}).")
     else:
         print(f"{NOMES_MODO[modo]}: o LLM simulado não respondeu MATCH nesta execução.")
-confere("na vigilância, menos da metade das respostas MATCH do LLM simulado são pares verdadeiros",
-        vpp_llm["vigilancia"] < 0.5)""",
+confere("na vigilância, nem toda resposta MATCH do LLM simulado é par verdadeiro",
+        vpp_llm["vigilancia"] < 1)""",
     ),
     (
         "md",
         """\
-**Leitura.** Mesmo com taxas de falso positivo pequenas, o LLM é aplicado a muitos não pares e poucos pares verdadeiros: os falsos positivos acumulam e o VPP do `MATCH` fica baixo. Por isso, na tese, o LLM só apoia a revisão: o `MATCH` dele segue ao revisor humano e nunca vira vínculo sozinho.""",
+**Leitura.** Mesmo com taxas de falso positivo pequenas, o LLM é aplicado a muitos não pares e poucos pares verdadeiros, e parte das respostas `MATCH` dele é falsa (conferido na vigilância): o VPP fica abaixo dos 100% do revisor humano perfeito desta simulação. Com tão poucas respostas `MATCH`, o VPP oscila muito de um ambiente para outro; o intervalo de Wilson impresso mostra essa incerteza. Por isso, na tese, o LLM só apoia a revisão: o `MATCH` dele segue ao revisor humano e nunca vira vínculo sozinho.""",
     ),
 ]
 
@@ -1692,7 +1715,7 @@ Os números abaixo são da coorte real da tese (SIM e Sinan, tuberculose), não 
 | Mesma carga humana na vigilância, 96 revisões | ASR: 23 pares verdadeiros, com 21 falsos positivos; O3: 22; "diferença que não sustenta superioridade" | abertura do capítulo (`cap:conclusao`) e `sec:concl-sintese` |
 | VPP das aceitações do LLM abaixo do corte, na vigilância | 16,0% (IC 95% de 6,4% a 34,7%); estaria subestimado se algum dos falsos positivos situados em região sem revisão documentada fosse par verdadeiro não verificado | `sec:concl-sintese` e `sec:concl-recomendacoes` |
 
-As leituras que as seções 6 a 8 conferem nesta base (nenhuma fila domina em todas as metas; O3 exige menos revisões que O1 nas metas menores; aceitar o `MATCH` do LLM acrescenta falsos positivos; o VPP desse `MATCH` é baixo) lembram as da tese. A base, porém, foi ajustada para imitar a dificuldade do problema, não os resultados, e os seus valores não se comparam aos da tabela.""",
+As leituras que as seções 6 a 8 conferem nesta base (nenhuma fila domina em todas as metas; O3 exige menos revisões que O1 nas metas menores; aceitar o `MATCH` do LLM acrescenta falsos positivos; parte desses `MATCH` é falsa) lembram as da tese. A base, porém, foi ajustada para imitar a dificuldade do problema, não os resultados, e os seus valores não se comparam aos da tabela.""",
     ),
     (
         "md",
@@ -1714,19 +1737,103 @@ A recomendação não é um algoritmo que decide sozinho, e sim uma **ordem de t
 ]
 
 
+# Perguntas que a plateia provavelmente fará, no fim da seção a que se referem.
+# Ficam recolhidas (<details> sem "open"): quem lê abre só a que interessa.
+PERGUNTAS_PROVAVEIS: dict[int, list[tuple[str, str]]] = {
+    2: [
+        (
+            "De onde vêm os custos de vigilância e de confirmação?",
+            "São os da tese, lidos do módulo `nb_fila`. Representam a importância relativa dos erros para o serviço, na unidade de revisões humanas equivalentes. Não são uma estimativa empírica: são uma escolha de quem usa o método, e o controle desta seção mostra como as ações mudam quando eles mudam.",
+        ),
+        (
+            "Por que a mesma probabilidade leva a ações diferentes nos dois modos?",
+            "Porque a política escolhe a ação de menor custo esperado, e os dois modos invertem o peso dos erros. Na vigilância, deixar de vincular um par verdadeiro custa mais que aceitar um vínculo errado; na confirmação, é o contrário. Com a mesma probabilidade, a conta muda de lado (a seção confere isso no exemplo).",
+        ),
+    ],
+    3: [
+        (
+            "Os resultados sintéticos confirmam a tese?",
+            "Não. A base foi ajustada para imitar a dificuldade do problema, não os resultados. O notebook demonstra o método; os números da tese estão na seção 10, com a fonte.",
+        ),
+    ],
+    4: [
+        (
+            "Por que agrupar por óbito na validação cruzada?",
+            "Em dados reais, potenciais pares do mesmo óbito repetem nome, nascimento e mãe do falecido. Se caírem no treino e no teste, o modelo é avaliado num óbito que já viu, e a avaliação fica otimista. Esta base sintética não tem esse canal de vazamento, por isso o notebook não compara as partições.",
+        ),
+        (
+            "Por que a AUC é alta para tudo e a precisão média não?",
+            "A *grey area* tem muitos não pares fáceis de separar, que inflam a AUC. A precisão média olha o topo da fila, onde está o orçamento humano, e por isso separa melhor as alternativas.",
+        ),
+        (
+            "Por que meus números diferem da execução de referência ou dos de um colega?",
+            "A probabilidade fora da amostra é refeita em cada execução com o XGBoost e o scikit-learn instalados. Em versões diferentes dessas bibliotecas, as partições e as árvores podem sair um pouco diferentes, mesmo com a mesma semente e em CPU, e as contagens das seções seguintes mudam junto. As frases marcadas com ✓ valem em qualquer ambiente: quando uma deixa de valer, a célula para e avisa.",
+        ),
+    ],
+    6: [
+        (
+            "Por que não escolher sempre O3?",
+            "Nenhuma fila vence em todas as metas. O3 tende a ir bem nas metas menores; na recuperação integral, os degraus da calibração isotônica podem atrasá-la, e F4 desempata pelo escore. Parte dessa vantagem pode vir do viés de verificação da referência (seção 10).",
+        ),
+    ],
+    7: [
+        (
+            "O que significa um IC que exclui zero aqui?",
+            "Que, nas réplicas do *bootstrap* agrupado por óbito, a mesma fila exigiu menos revisões em pelo menos 97,5% delas. O IC é condicional: modelo e filas fixos, referência tomada como certa; neste notebook, a fusão não é refeita nas réplicas, ao contrário da tese.",
+        ),
+    ],
+    8: [
+        (
+            "Se a automação recupera mais pares na mesma carga humana, por que não adotá-la?",
+            "Porque o ganho é de poucos pares e vem com vínculos falsos aceitos sem revisor humano, mais numerosos que os pares ganhos; a célula da comparação confere as duas coisas. E a comparação já favorece a política: os `MATCH` automáticos não contam na carga humana. Na tese, a diferença também não sustentou superioridade (seção 10).",
+        ),
+        (
+            "Por que o LLM não pode aceitar vínculos sozinho?",
+            "Mesmo com taxa de falso positivo pequena, ele é aplicado a muitos não pares, e parte dos `MATCH` dele é falsa: o VPP fica abaixo do revisor humano. Por isso, na tese, o `MATCH` do LLM só indica o potencial par ao revisor humano (`sec:concl-recomendacoes`).",
+        ),
+        (
+            "O LLM do notebook é real?",
+            "Não. As respostas são sorteadas com as taxas de erro por faixa do revisor de referência da tese (Claude Haiku 5.5). Nenhuma chamada a um modelo é feita.",
+        ),
+    ],
+    9: [
+        (
+            "O que é o perfil histórico e por que ele está no notebook?",
+            "É o `run_v3` com *Platt scaling* e política v3. A tese compara o antes e o depois, e o pacote precisa reproduzi-lo; esta seção confere a reprodução, não o desempenho.",
+        ),
+    ],
+    10: [
+        (
+            "O que fazer com os potenciais pares que ficam além do orçamento?",
+            "Registrá-los como não examinados, não como não pares: a ausência de vínculo por esgotamento do orçamento não equivale a óbito não notificado (`sec:concl-recomendacoes`).",
+        ),
+    ],
+}
+
+
+def _perguntas_md(perguntas: list[tuple[str, str]]) -> str:
+    blocos = [
+        f"<details>\n<summary>{pergunta}</summary>\n\n{resposta}\n\n</details>"
+        for pergunta, resposta in perguntas
+    ]
+    return "**❓ Perguntas prováveis.** Clique numa pergunta para ver a resposta.\n\n" + "\n\n".join(blocos)
+
+
+def _com_perguntas(numero: int, secao: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    if numero not in PERGUNTAS_PROVAVEIS:
+        return secao
+    return [*secao, ("md", _perguntas_md(PERGUNTAS_PROVAVEIS[numero]))]
+
+
 TODAS_AS_SECOES: list[list[tuple[str, str]]] = [
     ABERTURA,
-    SECAO_0,
-    SECAO_1,
-    SECAO_2,
-    SECAO_3,
-    SECAO_4,
-    SECAO_5,
-    SECAO_6,
-    SECAO_7,
-    SECAO_8,
-    SECAO_9,
-    SECAO_10,
+    *[
+        _com_perguntas(numero, secao)
+        for numero, secao in enumerate([
+            SECAO_0, SECAO_1, SECAO_2, SECAO_3, SECAO_4, SECAO_5,
+            SECAO_6, SECAO_7, SECAO_8, SECAO_9, SECAO_10,
+        ])
+    ],
 ]
 
 
