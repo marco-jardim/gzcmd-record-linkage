@@ -10,8 +10,11 @@ GZ-CMD tem como nome histórico "Grey-Zone: Calibrated Mixture-of-experts +
 Conformal Deferral + Constrained Matching". Os termos não correspondem todos a
 mecanismos implementados:
 
-- **Calibrated**: calibração de probabilidades, com Platt no perfil histórico e
-  calibração isotônica no perfil v3.1.
+- **Calibrated**: calibração de probabilidades por Platt (`fit_platt`,
+  `fit_anchor_platt`) ou pela calibração sigmoide interna do `GZCMDClassifier`.
+  O pacote não implementa calibração isotônica; a probabilidade isotônica fora
+  da amostra usada na tese foi calculada fora do pacote e passada ao motor de
+  política (`PolicyEngineV3`) na coluna `p_cal`.
 - **Mixture-of-experts**: uso livre do termo para a articulação de regras,
   classificador e revisor sob uma política, sem mecanismo aprendido de seleção
   entre especialistas.
