@@ -61,7 +61,7 @@ Use as falas como apoio. Não leia código nem todas as colunas das tabelas.
 9. **8. Contraste com a automação** | **2 min**
    - **Dizer:** “Agora a alternativa: deixar a política decidir abaixo do corte, com um LLM simulado com as taxas de erro do revisor de referência da tese. Comparamos na mesma carga humana, com uma simplificação que favorece a política.”
    - **Mostrar/clicar:** as leituras impressas da comparação na mesma carga (falsos positivos do LLM e total) e a linha do VPP do `MATCH` do LLM.
-   - **O que a plateia deve perceber:** na vigilância, a automação recupera no máximo um par verdadeiro a mais que a fila O3 e acrescenta falsos positivos; o `MATCH` do LLM tem VPP baixo, por isso o LLM só apoia, e o `MATCH` dele vai ao revisor humano.
+   - **O que a plateia deve perceber:** na vigilância, na mesma carga, a fila O3 recupera quase tantos pares verdadeiros quanto a automação, e os poucos pares a mais da automação vêm com mais vínculos falsos do que pares ganhos; parte dos `MATCH` do LLM é falsa (com tão poucas respostas, o VPP oscila: veja o intervalo impresso), por isso o LLM só apoia, e o `MATCH` dele vai ao revisor humano. Os números exatos mudam um pouco de máquina para máquina.
 
 10. **10. Fluxo recomendado e limitações** | **1 min 30 s**
     - **Dizer:** “Nas palavras da tese: preservar o corte e, abaixo dele, ordenar a revisão manual pela probabilidade calibrada, isolada ou fundida ao escore, escolhendo pela curva de esforço. Os números da tabela são da coorte real e vêm da conclusão, seção a seção. E o que fica além do orçamento é ‘não examinado’, não ‘não par’: ausência de vínculo por falta de revisão não é óbito não notificado.”
@@ -81,12 +81,14 @@ Use as falas como apoio. Não leia código nem todas as colunas das tabelas.
 
 ## Perguntas prováveis da banca
 
+Estas perguntas também estão no notebook, recolhidas no fim da seção a que se referem (blocos **❓ Perguntas prováveis**): a plateia pode abri-las sozinha. O notebook acrescenta três: por que a mesma probabilidade leva a ações diferentes nos dois modos (seção 2), por que os números mudam de uma máquina para outra (seção 4) e por que não adotar a automação se ela recupera mais pares na mesma carga (seção 8).
+
 1. **Os resultados sintéticos confirmam a tese?** Não. A base foi ajustada para imitar a dificuldade do problema, não os resultados. O notebook demonstra o método; os números da tese estão na seção 10, com a fonte.
 2. **Por que agrupar por óbito na validação cruzada?** Em dados reais, potenciais pares do mesmo óbito repetem nome, nascimento e mãe do falecido; se caírem no treino e no teste, o modelo é avaliado num óbito que já viu, e a avaliação fica otimista. Esta base sintética não tem esse canal de vazamento, por isso o notebook não compara as partições (seção 4).
 3. **Por que a AUC é alta para tudo e a precisão média não?** A *grey area* tem muitos não pares fáceis, que inflam a AUC. A precisão média olha o topo da fila, onde está o orçamento humano. Veja a seção 4.
 4. **Por que não escolher sempre O3?** Nenhuma fila vence em todas as metas. O3 tende a ir bem nas metas menores; na recuperação integral, os degraus da calibração isotônica podem atrasá-la, e F4 desempata pelo escore. Parte dessa vantagem pode vir do viés de verificação da referência. Veja as seções 4 e 6.
 5. **O que significa um IC que exclui zero aqui?** Que, nas réplicas do *bootstrap* agrupado por óbito, a mesma fila exigiu menos revisões em pelo menos 97,5% delas. O IC é condicional: modelo e filas fixos, referência tomada como certa; neste notebook, a fusão não é refeita nas réplicas, ao contrário da tese. Veja a seção 7.
-6. **Por que o LLM não pode aceitar vínculos sozinho?** Mesmo com taxa de falso positivo pequena, ele é aplicado a muitos não pares, e o VPP do `MATCH` fica baixo. Veja a seção 8 e, na tese, `sec:concl-recomendacoes`.
+6. **Por que o LLM não pode aceitar vínculos sozinho?** Mesmo com taxa de falso positivo pequena, ele é aplicado a muitos não pares, e parte dos `MATCH` dele é falsa: o VPP fica abaixo do revisor humano. Veja a seção 8 e, na tese, `sec:concl-recomendacoes`.
 7. **O LLM do notebook é real?** Não. As respostas são sorteadas com as taxas de erro por faixa do revisor de referência da tese (Claude Haiku 5.5). Nenhuma chamada é feita.
 8. **De onde vêm os custos de vigilância e confirmação?** São os da tese, lidos do módulo `nb_fila`. Representam a importância relativa dos erros para o serviço, na unidade de revisões humanas equivalentes.
 9. **O que é o perfil histórico e por que ele está no notebook?** É o `run_v3` com *Platt scaling* e política v3. A tese compara antes e depois, e o pacote precisa reproduzi-lo; a seção 9 confere a reprodução, não o desempenho.

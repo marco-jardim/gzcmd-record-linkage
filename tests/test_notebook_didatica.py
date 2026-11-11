@@ -398,6 +398,20 @@ def test_details_com_summary_e_espaco_para_renderizar_markdown() -> None:
         )
 
 
+def test_perguntas_provaveis_recolhidas_no_fim_de_cada_secao() -> None:
+    secoes = _secoes(_carregar_notebook().cells)
+    for numero, perguntas in build_notebook.PERGUNTAS_PROVAVEIS.items():
+        ultima = secoes[numero][-1]
+        assert ultima.cell_type == "markdown", numero
+        assert ultima.source.startswith("**❓ Perguntas prováveis."), numero
+        assert ultima.source.count("<details>") == len(perguntas), numero
+        assert "<details open" not in ultima.source, f"Pergunta aberta: seção {numero}."
+        for pergunta, _ in perguntas:
+            assert f"<summary>{pergunta}</summary>" in ultima.source, pergunta
+    total = sum(len(p) for p in build_notebook.PERGUNTAS_PROVAVEIS.values())
+    assert total >= 10
+
+
 # Formas proibidas no corpo do texto (guia de estilo da tese, seção 3.6).
 # Comparação sem distinguir maiúsculas, exceto siglas.
 TERMOS_PROIBIDOS = (
