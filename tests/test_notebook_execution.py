@@ -4,7 +4,10 @@
   ``nbclient``/``ExecutePreprocessor`` e falha se qualquer célula levantar erro.
   Este teste cresce com o notebook ao longo da Wave 2.
 - **TST2.1.a**: faz *parse* do ``.ipynb`` via ``nbformat`` e verifica que as seções
-  esperadas (cabeçalhos markdown) estão presentes.
+  esperadas (cabeçalhos markdown) estão presentes. As frases do texto que
+  dependem de números da base sintética são conferidas na própria execução
+  (função ``confere`` do notebook), de modo que a execução falha se o texto
+  deixar de valer.
 
 O notebook contém uma célula de *bootstrap* que ajusta ``sys.path`` sozinha, então o
 kernel filho não depende de ``PYTHONPATH`` herdado.
@@ -29,34 +32,27 @@ def _read_notebook() -> nbformat.NotebookNode:
 
 
 def test_tst_2_1_a_secoes_esperadas_presentes() -> None:
-    """O notebook contém os cabeçalhos de seção esperados para a Fase 2.1."""
+    """O notebook contém os cabeçalhos do plano aprovado (seções 0 a 10)."""
     nb = _read_notebook()
     markdown = "\n\n".join(c.source for c in nb.cells if c.cell_type == "markdown")
     esperadas = [
-        "# GZ-CMD++ v3",
-        "## Glossário",
-        "## 1. Contexto",
-        "## 2. Visão geral do pipeline",
-        "## 3. Objetivos",
-        "## 4. Setup",
-        "## 5. Primeiro olhar nos dados",
-        "exemplo-fio-condutor",
-        "## 7. Carga dos dados e",
-        "feature engineering",
-        "## 8. Atribuição de bandas",
-        "## 9. Calibração",
-        "boletim da calibração",
-        "Autocalibração por âncoras",
-        "Fβ",
-        "Random Forest",
-        "XGBoost",
-        "## 10. Guardrails",
-        "## 11. Política de decisão",
-        "## 12. Reconciliação",
-        "## 13. Avaliação held-out",
-        "## 14. Revisão LLM",
-        "## 15. Painel interativo",
-        "## 16. Conclusões e limitações",
+        "# GZ-CMD passo a passo",
+        "## Preparação do ambiente",
+        "## 0. Glossário",
+        "## 1. O problema",
+        "## 2. Teoria do GZ-CMD",
+        "### 2.4 Um exemplo resolvido",
+        "## 3. Dados sintéticos",
+        "## 4. Probabilidade calibrada fora da amostra",
+        "validação cruzada aninhada 5 × 5",
+        "## 5. Ordenações da fila",
+        "### 5.1 A fusão por posição recíproca",
+        "## 6. Curva de esforço",
+        "## 7. Incerteza",
+        "## 8. Contraste com a automação",
+        "## 9. Linha de base histórica",
+        "## 10. Fluxo recomendado e limitações",
+        "### 10.3 Limitações",
     ]
     faltando = [s for s in esperadas if s not in markdown]
     assert not faltando, f"Seções ausentes no notebook: {faltando}"
