@@ -46,22 +46,24 @@ def test_scores_and_shuffled_ties(method):
     scores = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
     expected = np.random.default_rng(42).permutation(6)
     np.testing.assert_array_equal(
-        method([scores], input_kind="scores"), expected
+        method([scores], input_kind="scores", tie_break="random"), expected
     )
     assert not np.array_equal(expected, np.arange(6))
     assert not np.array_equal(
-        expected, method([scores], input_kind="scores", seed=43)
+        expected,
+        method([scores], input_kind="scores", seed=43, tie_break="random"),
     )
     np.testing.assert_array_equal(
-        method([[0, 2, 1]], input_kind="scores"), [1, 2, 0]
+        method([[0, 2, 1]], input_kind="scores", tie_break="random"), [1, 2, 0]
     )
     np.testing.assert_array_equal(method([[0, 2, 1]]), [0, 2, 1])
 
 
 def test_rrf_fusion_ties_are_seeded():
     forward = list(range(6))
-    actual = rrf([forward, forward[::-1]], seed=19)
-    np.testing.assert_array_equal(actual, rrf([forward, forward[::-1]], seed=19))
+    kwargs = {"seed": 19, "tie_break": "random"}
+    actual = rrf([forward, forward[::-1]], **kwargs)
+    np.testing.assert_array_equal(actual, rrf([forward, forward[::-1]], **kwargs))
     # Equal fused scores for items 0 and 5 follow shuffled, not row, priority.
     priority = list(np.random.default_rng(19).permutation(6))
     assert list(actual[:2]) == sorted([0, 5], key=priority.index)

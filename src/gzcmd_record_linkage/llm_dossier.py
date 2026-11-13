@@ -32,6 +32,7 @@ __all__ = [
     "Dossier",
     "DossierFeatures",
     "DossierModelOutputs",
+    "DossierView",
     "build_dossier",
     "build_dossiers",
     "make_pair_id",
@@ -151,6 +152,33 @@ class Dossier:
     def to_json(self, **kwargs: Any) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), ensure_ascii=False, **kwargs)
+
+
+class DossierView:
+    """Serialization-only view of a :class:`Dossier`.
+
+    With ``remove_model_outputs=True`` the whole ``model_outputs`` group
+    (``p_cal``, ``band``, ``base_choice``, ``evr``, ``guardrail`` and
+    ``guardrail_reason``) is dropped and every other field is preserved
+    byte-for-byte. This is the "sem_mo" dossier of the thesis Claude Haiku
+    runs. It exposes the ``pair_id`` / ``to_json`` interface the reviewers use.
+    ``Dossier`` and ``SCHEMA_VERSION`` are unchanged; ``schema_version`` stays
+    in the payload.
+    """
+
+    def __init__(self, dossier: Dossier, remove_model_outputs: bool = False) -> None:
+        self.pair_id = dossier.pair_id
+        self.payload = dossier.to_dict()
+        if remove_model_outputs:
+            self.payload.pop("model_outputs", None)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a copy of the (possibly ablated) payload."""
+        return json.loads(json.dumps(self.payload, ensure_ascii=False))
+
+    def to_json(self, **kwargs: Any) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.payload, ensure_ascii=False, **kwargs)
 
 
 # ---------------------------------------------------------------------------

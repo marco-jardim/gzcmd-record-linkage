@@ -118,18 +118,26 @@ def test_f4_igual_ao_rrf_do_pacote(abaixo):
     ordens = nf.ordenacoes(abaixo, p)
     quadro = abaixo.assign(p_cal=p, posicao=np.arange(len(abaixo)))
     fila = review_queue(
-        quadro, scores=["p_cal", "escore_orl"], method="rrf", k=60, seed=42
+        quadro,
+        scores=["p_cal", "escore_orl"],
+        method="rrf",
+        k=60,
+        seed=42,
+        tie_break="random",
     )
     np.testing.assert_array_equal(ordens["F4"], fila["posicao"].to_numpy())
     escore = abaixo["escore_orl"].to_numpy()
-    np.testing.assert_array_equal(ordens["O1"], rrf([escore], input_kind="scores"))
-    np.testing.assert_array_equal(ordens["O3"], rrf([p], input_kind="scores"))
+    kw = {"input_kind": "scores", "tie_break": "random"}
+    np.testing.assert_array_equal(ordens["O1"], rrf([escore], **kw))
+    np.testing.assert_array_equal(ordens["O3"], rrf([p], **kw))
 
 
 def test_ordenacoes_alinham_series_da_base_inteira(base, abaixo):
     serie = pd.Series(np.random.default_rng(1).random(len(base)), index=base.index)
     ordens = nf.ordenacoes(abaixo, serie)
-    esperado = rrf([serie.loc[abaixo.index].to_numpy()], input_kind="scores")
+    esperado = rrf(
+        [serie.loc[abaixo.index].to_numpy()], input_kind="scores", tie_break="random"
+    )
     np.testing.assert_array_equal(ordens["O3"], esperado)
     with pytest.raises(ValueError):
         nf.ordenacoes(abaixo, np.zeros(len(abaixo) + 1))

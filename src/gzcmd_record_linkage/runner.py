@@ -18,6 +18,8 @@ from .classifier import ClassifierConfig, GZCMDClassifier
 from .config import GZCMDConfig, load_config
 from .guardrails import apply_guardrails
 from .loader import LoadConfig, load_comparador_csv
+from .np_policy import NPConstraints
+from .oof import fit_xgb_oof, pair_ids
 from .policy_engine import (
     Budget,
     Costs,
@@ -50,13 +52,28 @@ def build_engine_from_config(
     llm_used: int = 0,
     policy_version: str | None = None,
     human_used: int = 0,
+    policy_kind: str | None = None,
+    np_constraints: NPConstraints | None = None,
+    rates_yaml: str | Path | None = None,
 ) -> PolicyEngineV3:
+    """Build the policy engine of ``mode``.
+
+    ``rates_yaml`` overrides ``llm_review.reliability.estimated_rates_path`` as
+    the measured-rates file (same precedence as the thesis: ``rates_yaml`` first,
+    then the YAML path). Like that path it is read only for ``v3.1`` with the
+    LLM review enabled; a ``v3`` run ignores it.
+    """
     if mode not in cfg.decision_policy.modes:
         known = ", ".join(sorted(cfg.decision_policy.modes.keys()))
         raise KeyError(f"Unknown mode '{mode}'. Known modes: {known}")
 
     mode_cfg = cfg.decision_policy.modes[mode]
     policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
+    # Thesis semantics: NP exists only under v3.1 (a v3 run is always "cost")
+    # and is selectable for confirmacao only.
+    kind = "cost" if policy_version == "v3" else (policy_kind or mode_cfg.policy_kind)
+    if kind == "np" and mode != "confirmacao":
+        raise ValueError("NP is selectable for confirmacao only")
     legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
 
     costs = Costs(
@@ -69,9 +86,18 @@ def build_engine_from_config(
     if cfg.llm_review.enabled:
         missing: list[str] = []
         llm_error_by_band: dict[str, LLMError] = {}
+        # Measured per-mode rates (estimated_rates_path) are a v3.1-only input.
+        # Any v3 run (legacy override of a v3.1 YAML, or a YAML declaring v3)
+        # keeps the inline priors and never opens the rates file, so v3 output
+        # stays reproducible and independent of that file.
+        band_rates = (
+            cfg.llm_review.error_rates_for_mode(mode, source=rates_yaml)
+            if policy_version == "v3.1"
+            else cfg.llm_review.error_rates_by_band
+        )
         for band_def in cfg.bands.definitions:
             band = band_def.name
-            rates = cfg.llm_review.error_rates_by_band.get(band)
+            rates = band_rates.get(band)
             if rates is None:
                 missing.append(band)
                 continue
@@ -107,6 +133,8 @@ def build_engine_from_config(
         policy_version=policy_version,
         human_error=HumanError(mode_cfg.human_e_fp, mode_cfg.human_e_fn),
         human_budget=HumanBudget(mode_cfg.human_max_pairs_per_window, human_used),
+        policy_kind=kind,
+        np_constraints=np_constraints or mode_cfg.np_policy,
     )
 
 
@@ -127,7 +155,31 @@ def run_v3(
     classifier_config: ClassifierConfig | None = None,
     policy_version: str | None = None,
     human_used: int = 0,
+    policy_kind: str | None = None,
+    np_constraints: NPConstraints | None = None,
+    ml_oof_path: str | Path | None = None,
+    reuse_ml_oof: bool = False,
+    split_by: str | None = None,
+    rates_yaml: str | Path | None = None,
 ) -> tuple[pd.DataFrame, RunSummary]:
+    """Run the v3/v3.1 pipeline on a comparator CSV.
+
+    ``p_cal`` selects the probability route: ``config`` (YAML
+    ``calibration.p_cal`` when set, else ``calibration.method``), ``stub``,
+    ``platt``/``fit_platt``/``anchor_platt``, ``load_platt``, ``ml_xgb``,
+    ``fit_ml_rf``/``load_ml_rf`` and ``fit_ml_xgb``/``load_ml_xgb``.
+
+    ``ml_xgb`` is the thesis nested out-of-fold XGBoost + isotonic probability
+    (``oof.fit_xgb_oof``), matched to the rows by ``pair_id``. It is an
+    evaluation artifact that uses the labels (``PAR``). ``split_by`` (row,
+    refrec, comprec) defaults to ``evaluation.split_by`` of the YAML.
+    ``ml_oof_path`` persists the OOF table (+ ``.json`` fingerprint); without it
+    nothing is written. ``reuse_ml_oof`` reuses that table when its fingerprint
+    matches the input, and requires ``ml_oof_path``.
+
+    ``rates_yaml`` overrides the measured reviewer-rates file (see
+    ``build_engine_from_config``); it only matters for v3.1.
+    """
     cfg = load_config(config_path)
     policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
     if policy_version not in {"v3", "v3.1"}:
@@ -153,7 +205,7 @@ def run_v3(
     clip_min = float(cfg.calibration.clip_min)
     clip_max = float(cfg.calibration.clip_max)
     if p_cal == "config":
-        p_cal = cfg.calibration.method
+        p_cal = cfg.calibration.p_cal or cfg.calibration.method
     if p_cal == "stub":
         df["p_cal"] = compute_p_cal(
             df, method="stub", clip_min=clip_min, clip_max=clip_max
@@ -190,6 +242,16 @@ def run_v3(
         df["p_cal"] = compute_p_cal(
             df, method="platt", model=model, clip_min=clip_min, clip_max=clip_max
         )
+    elif p_cal == "ml_xgb":
+        oof = fit_xgb_oof(
+            input_csv,
+            output_path=ml_oof_path,
+            reuse=reuse_ml_oof,
+            split_by=split_by or cfg.evaluation.split_by,
+        )
+        df["p_cal"] = pair_ids(df).map(oof.set_index("pair_id")["p_cal_ml"])
+        if df["p_cal"].isna().any():
+            raise ValueError("OOF table does not cover every pair_id")
     elif p_cal == "fit_ml_rf":
         config = classifier_config or ClassifierConfig(classifier_type="random_forest")
         clf = GZCMDClassifier(config=config)
@@ -221,7 +283,7 @@ def run_v3(
     else:
         raise ValueError(
             "p_cal must be one of: config, stub, platt, anchor_platt, fit_platt, "
-            "load_platt, fit_ml_rf, load_ml_rf, fit_ml_xgb, load_ml_xgb"
+            "load_platt, ml_xgb, fit_ml_rf, load_ml_rf, fit_ml_xgb, load_ml_xgb"
         )
 
     g = apply_guardrails(
@@ -239,6 +301,8 @@ def run_v3(
     engine = build_engine_from_config(
         cfg, mode=mode, llm_used=llm_used,
         policy_version=policy_version, human_used=human_used,
+        policy_kind=policy_kind, np_constraints=np_constraints,
+        rates_yaml=rates_yaml,
     )
     out = engine.triage(df)
 

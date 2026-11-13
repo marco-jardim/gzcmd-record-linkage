@@ -28,11 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     default_config = _default_config_path()
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    run = sub.add_parser(
-        "run", help="Run the decision policy pipeline (v3 or v3.1)"
-    )
+    run = sub.add_parser("run", help="Run the decision policy pipeline (v3 or v3.1)")
     run.add_argument(
-        "--policy-version", choices=["v3", "v3.1"], default=None,
+        "--policy-version",
+        choices=["v3", "v3.1"],
+        default=None,
         help="Decision policy (default: config guardrails.policy_version, or v3)",
     )
     run.add_argument(
@@ -76,9 +76,34 @@ def build_parser() -> argparse.ArgumentParser:
             "load_ml_rf",
             "fit_ml_xgb",
             "load_ml_xgb",
+            "ml_xgb",
+            "platt",
+            "anchor_platt",
+            "config",
         ],
         default="fit_platt",
-        help="How to compute p_cal (default: fit_platt)",
+        help=(
+            "How to compute p_cal (default: fit_platt). 'config' uses YAML "
+            "calibration.p_cal, else calibration.method; 'ml_xgb' is the nested "
+            "out-of-fold XGBoost + isotonic probability (uses labels)"
+        ),
+    )
+    run.add_argument(
+        "--ml-oof-path",
+        default="",
+        help="Where to persist the nested OOF table for --p-cal ml_xgb "
+        "(default: not persisted)",
+    )
+    run.add_argument(
+        "--reuse-ml-oof",
+        action="store_true",
+        help="Reuse the fingerprint-validated OOF table at --ml-oof-path if it matches",
+    )
+    run.add_argument(
+        "--rates-yaml",
+        default="",
+        help="Measured reviewer-rates file overriding llm_review.reliability."
+        "estimated_rates_path (v3.1 only)",
     )
     run.add_argument(
         "--platt-model",
@@ -189,6 +214,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable MACD feature engineering",
     )
     ev.add_argument(
+        "--policy-version",
+        choices=["v3", "v3.1"],
+        default=None,
+        help=(
+            "Policy override (default: historical v3 evaluation); "
+            "v3 on a v3.1 YAML restores historical thresholds"
+        ),
+    )
+    ev.add_argument(
+        "--feature-allowlist",
+        action="store_true",
+        help=(
+            "Restrict ML classifiers to the 30 comparator attributes "
+            "plus enabled MACD attributes"
+        ),
+    )
+    ev.add_argument(
         "--metrics-out",
         default="",
         help="Write per-run metrics CSV to this path (sep=';')",
@@ -248,6 +290,9 @@ def main(argv: list[str] | None = None) -> int:
             save_ml_rf_model_path=(args.save_ml_rf_model or None),
             ml_xgb_model_path=(args.ml_xgb_model or None),
             save_ml_xgb_model_path=(args.save_ml_xgb_model or None),
+            ml_oof_path=(args.ml_oof_path or None),
+            reuse_ml_oof=args.reuse_ml_oof,
+            rates_yaml=(args.rates_yaml or None),
         )
 
         if args.output:
@@ -304,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
             group_stratify=group_stratify,
             calibration=calibration,
             macd_enabled=not args.no_macd,
+            feature_set="allowlist" if args.feature_allowlist else "historical",
+            policy_version=args.policy_version,
         )
 
         print(f"runs={len(runs)}")

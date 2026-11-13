@@ -4,10 +4,14 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .np_policy import NPConstraints
+from .reliability import load_band_rates
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,8 @@ class ModePolicyConfig:
     human_e_fp: float = 0.05
     human_e_fn: float = 0.05
     human_max_pairs_per_window: int | None = None
+    policy_kind: str = "cost"
+    np_policy: NPConstraints = field(default_factory=NPConstraints)
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,30 @@ class DecisionPolicyConfig:
 class LLMReviewConfig:
     enabled: bool
     error_rates_by_band: dict[str, dict[str, float]]
+    estimated_rates_path: str | None = None
+
+    def error_rates_for_mode(
+        self, mode: str, source: str | Path | None = None
+    ) -> dict[str, dict[str, float]]:
+        """Per-band reviewer rates for ``mode``.
+
+        Without a rates file these are the inline ``error_rates_by_band``
+        values. With one, measured rates are read from it (thesis semantics, see
+        ``reliability.load_band_rates``) with the inline values as the fixed
+        fallback; every band gets ``e_unsure``. The file is ``source`` when
+        given (an explicit override, e.g. ``run_v3(rates_yaml=...)``), else
+        ``estimated_rates_path``.
+        """
+        path = self.estimated_rates_path if source is None else source
+        if path is None:
+            return {
+                band: dict(rates) for band, rates in self.error_rates_by_band.items()
+            }
+        measured = load_band_rates(self.error_rates_by_band, mode=mode, source=path)
+        return {
+            band: {"e_fp": err.e_fp, "e_fn": err.e_fn, "e_unsure": err.e_unsure}
+            for band, err in measured.items()
+        }
 
 
 @dataclass(frozen=True)
@@ -103,6 +133,23 @@ class AnchorFitParams:
                 raise ValueError(f"anchor_platt.{name} must be a positive integer")
 
 
+CALIBRATION_ROUTES = frozenset(
+    {
+        "stub",
+        "platt",
+        "anchor_platt",
+        "fit_platt",
+        "load_platt",
+        "ml_xgb",
+        "fit_ml_rf",
+        "load_ml_rf",
+        "fit_ml_xgb",
+        "load_ml_xgb",
+    }
+)
+"""Values accepted by ``calibration.p_cal`` (every ``run_v3`` route but ``config``)."""
+
+
 @dataclass(frozen=True)
 class CalibrationConfig:
     clip_min: float = 1e-6
@@ -112,6 +159,9 @@ class CalibrationConfig:
     by_band: bool = False
     fallback: str = "error"
     anchor_platt: AnchorFitParams = field(default_factory=AnchorFitParams)
+    # Optional route for ``run_v3(p_cal="config")``; when set it takes precedence
+    # over ``method`` (e.g. ``ml_xgb`` in the v3.1 profile). ``None`` = use method.
+    p_cal: str | None = None
 
 
 @dataclass(frozen=True)
@@ -249,6 +299,21 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
             None if max_auto_raw is None else float(max_auto_raw)
         )
 
+        policy_kind = str(cfg.get("policy_kind", "cost"))
+        if policy_kind not in {"cost", "np"} or (
+            policy_kind == "np" and mode_name != "confirmacao"
+        ):
+            raise ValueError("policy_kind must be cost, or np for confirmacao only")
+        np_cfg = _as_mapping(
+            cfg.get("np"), field=f"decision_policy.modes[{mode_name}].np"
+        )
+        absolute_fp = np_cfg.get("max_fp_expected_total")
+        np_policy = NPConstraints(
+            float(np_cfg.get("max_fp_rate_auto", 0.002)),
+            None if absolute_fp is None else float(absolute_fp),
+            float(np_cfg.get("max_fn_rate_auto", 0.02)),
+        )
+
         parsed[mode_name] = ModePolicyConfig(
             false_positive_cost=float(costs["false_positive"]),
             false_negative_cost=float(costs["false_negative"]),
@@ -266,12 +331,14 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
             human_max_pairs_per_window=_as_mapping(
                 cfg.get("human_budget"), field="human_budget"
             ).get("max_pairs_per_window"),
+            policy_kind=policy_kind,
+            np_policy=np_policy,
         )
 
     return DecisionPolicyConfig(modes=parsed)
 
 
-def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
+def _load_llm_review(data: Mapping[str, Any], config_dir: Path) -> LLMReviewConfig:
     llm = _as_mapping(data.get("llm_review"), field="llm_review")
     enabled = bool(llm.get("enabled", False))
 
@@ -293,7 +360,12 @@ def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
             ):
                 raise ValueError("e_unsure must be a finite probability within [0,1]")
 
-    return LLMReviewConfig(enabled=enabled, error_rates_by_band=rates)
+    # Relative paths resolve against the YAML's directory (as in the thesis).
+    source = reliability.get("estimated_rates_path")
+    source_path = None if source is None else str((config_dir / str(source)).resolve())
+    return LLMReviewConfig(
+        enabled=enabled, error_rates_by_band=rates, estimated_rates_path=source_path
+    )
 
 
 def _load_guardrails_params(data: Mapping[str, Any]) -> GuardrailsParams:
@@ -354,6 +426,12 @@ def _load_calibration_config(data: Mapping[str, Any]) -> CalibrationConfig:
     method = str(cal.get("method", "platt"))
     if method not in {"platt", "anchor_platt", "stub"}:
         raise ValueError("calibration.method must be platt, anchor_platt or stub")
+    p_cal_raw = cal.get("p_cal")
+    p_cal = None if p_cal_raw is None else str(p_cal_raw)
+    if p_cal is not None and p_cal not in CALIBRATION_ROUTES:
+        raise ValueError(
+            "calibration.p_cal must be one of: " + ", ".join(sorted(CALIBRATION_ROUTES))
+        )
     fallback = str(cal.get("fallback", "error"))
     if fallback not in {"error", "platt"}:
         raise ValueError("calibration.fallback must be error or platt")
@@ -392,6 +470,7 @@ def _load_calibration_config(data: Mapping[str, Any]) -> CalibrationConfig:
         method=method,
         by_band=by_band,
         fallback=fallback,
+        p_cal=p_cal,
         anchor_platt=AnchorFitParams(**anchor_params),
         platt=PlattFitParams(
             l2=1e-3 if l2_raw is None else float(l2_raw),
@@ -457,6 +536,28 @@ def _load_monitoring_config(data: Mapping[str, Any]) -> MonitoringConfig:
     )
 
 
+_PACKAGED_CONFIGS = {
+    "v3": "gzcmd_v3_config.yaml",
+    "v3.1": "gzcmd_v31_config.yaml",
+}
+
+
+def packaged_config_path(profile: str = "v3") -> Path:
+    """Path of a config shipped inside the package (``v3`` or ``v3.1``).
+
+    ``v3`` is the default profile used by the CLI; ``v3.1`` is the thesis
+    v3.1/P profile with measured Haiku v4 reviewer rates (additive, opt-in).
+    """
+    try:
+        name = _PACKAGED_CONFIGS[profile]
+    except KeyError:
+        known = ", ".join(sorted(_PACKAGED_CONFIGS))
+        raise ValueError(
+            f"Unknown packaged config profile {profile!r}. Known: {known}"
+        ) from None
+    return Path(str(files("gzcmd_record_linkage") / name))
+
+
 def load_config(path: str | Path) -> GZCMDConfig:
     """Load `gzcmd_v3_config.yaml`-style config into typed dataclasses."""
 
@@ -471,7 +572,7 @@ def load_config(path: str | Path) -> GZCMDConfig:
 
     bands = BandsConfig(definitions=_load_band_definitions(data))
     decision_policy = _load_decision_policy(data)
-    llm_review = _load_llm_review(data)
+    llm_review = _load_llm_review(data, p.parent)
     guardrails = _load_guardrails_params(data)
     calibration = _load_calibration_config(data)
     evaluation = _load_evaluation_defaults(data)

@@ -1,0 +1,1656 @@
+schema_version: 1
+source_config: gzcmd/gzcmd_v3_config.yaml
+source_config_sha256: a2bff114be251094b2c1739aed6036c84ba2dbe453b7d6c55cb586cdd89ee355
+method: Wilson 95%; FP/negatives; FN/positives; UNSURE/n; explicit fixed fallback
+  for zero denominators
+prompt: v4
+dossie: sem_mo
+pooled_excludes_partial: false
+provisional: false
+limitations:
+- Checkpoints are not a random sample; no extrapolation to unanswered pairs.
+- Pooled n counts decisions, not independent pairs; Wilson intervals are descriptive.
+- UNSURE is not FP/FN; human referral is not an observed correct decision.
+- Haiku includes adaptively selected supplemental cohorts; reliability estimates and
+  policy replay are not independent validation.
+sources:
+- mode: vigilancia
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 1410
+  n_esperado: 1410
+  n_sem_resposta: 0
+  completo: true
+  path: data/sprint3b/anthropic_sem_mo_v4/exp2_llm_sync_vigilancia.json
+  sha256: 4af114a45b489e2273dc1cb2fa535d2cf436865449a807e8b6a75a2174a8b156
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+- mode: confirmacao
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 435
+  n_esperado: 435
+  n_sem_resposta: 0
+  completo: true
+  path: data/sprint3b/anthropic_sem_mo_v4/exp2_llm_sync_confirmacao.json
+  sha256: 4c50d1718a88ce8c639fac0c2a656632cef0873c4ccd52af23f8448fe2dd5fe1
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+- mode: vigilancia
+  model: deepseek-v4.1-flash
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 1410
+  n_esperado: 1410
+  n_sem_resposta: 0
+  completo: true
+  path: data/sprint3b/opencode_go_sem_mo_v4/exp2_llm_sync_vigilancia.json
+  sha256: 3cbaf7b1e589ccc8d3d0861a6c10a691b15e52cf261f61655b4b577a6fe9a1e6
+  reported_model: deepseek-v4.1-flash
+  alternate_source: false
+- mode: confirmacao
+  model: deepseek-v4.1-flash
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 435
+  n_esperado: 435
+  n_sem_resposta: 0
+  completo: true
+  path: data/sprint3b/opencode_go_sem_mo_v4/exp2_llm_sync_confirmacao.json
+  sha256: 119e4fd9f3358c50724a282fef8975d28fbe808b3e2ae6f8ae184eed711d35d2
+  reported_model: deepseek-v4.1-flash
+  alternate_source: false
+- mode: vigilancia
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 209
+  n_esperado: 209
+  n_sem_resposta: 0
+  completo: true
+  cohort: lote31_row
+  path: data/sprint3b/anthropic_sem_mo_v4_lote31/exp2_llm_sync_vigilancia.json
+  sha256: e21baf47edfdd28c3937e9c9401c3b61dd806edcc20d0b1454bdb25a4b7f870c
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+- mode: confirmacao
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 7
+  n_esperado: 7
+  n_sem_resposta: 0
+  completo: true
+  cohort: lote31_row
+  path: data/sprint3b/anthropic_sem_mo_v4_lote31/exp2_llm_sync_confirmacao.json
+  sha256: b3aac9bf8d09765c95a135d907e063ecce8a47b906fbb7507e2c79fe7dd35747
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+- mode: vigilancia
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 155
+  n_esperado: 155
+  n_sem_resposta: 0
+  completo: true
+  cohort: lote31_refrec
+  path: data/sprint3b/anthropic_sem_mo_v4_lote31_refrec/exp2_llm_sync_vigilancia.json
+  sha256: cc68b8658866627aefc25d008bb7c978df53f554cd92425b0502eb695ffd468c
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+- mode: confirmacao
+  model: claude-haiku-5-5
+  dossie: sem_mo
+  prompt: v4
+  n_respondido: 17
+  n_esperado: 17
+  n_sem_resposta: 0
+  completo: true
+  cohort: lote31_refrec
+  path: data/sprint3b/anthropic_sem_mo_v4_lote31_refrec/exp2_llm_sync_confirmacao.json
+  sha256: abc76bda740c23707ff95f674f7c32c1d87199fcec5f9a3c028e30bc804308f0
+  reported_model: claude-haiku-5-5
+  alternate_source: false
+bands:
+  low:
+    min: 0.0
+    max: 5.0
+    inclusive_max: false
+  grey_low:
+    min: 5.0
+    max: 6.0
+    inclusive_max: false
+  grey_mid:
+    min: 6.0
+    max: 7.0
+    inclusive_max: false
+  grey_high:
+    min: 7.0
+    max: 8.0
+    inclusive_max: false
+  near_high:
+    min: 8.0
+    max: 9.0
+    inclusive_max: false
+  high:
+    min: 9.0
+    max: 999.0
+    inclusive_max: true
+llm_review:
+  reliability:
+    error_rates_by_band: &id001
+      low:
+        e_fp: 0.1
+        e_fn: 0.15
+      grey_low:
+        e_fp: 0.07526881720430108
+        e_fn: 1.0
+      grey_mid:
+        e_fp: 0.07032967032967033
+        e_fn: 0.041666666666666664
+      grey_high:
+        e_fp: 0.11427357689039933
+        e_fn: 0.059322033898305086
+      near_high:
+        e_fp: 0.31746031746031744
+        e_fn: 0.1323529411764706
+      high:
+        e_fp: 0.0
+        e_fn: 0.09876543209876543
+models:
+  claude-haiku-5-5:
+    partial: false
+    error_rates_by_band:
+      low:
+        e_fp: 0.1
+        e_fn: 0.15
+      grey_low:
+        e_fp: 0.07526881720430108
+        e_fn: 1.0
+      grey_mid:
+        e_fp: 0.02531645569620253
+        e_fn: 0.046511627906976744
+      grey_high:
+        e_fp: 0.02508361204013378
+        e_fn: 0.1076923076923077
+      near_high:
+        e_fp: 0.03125
+        e_fn: 0.2647058823529412
+      high:
+        e_fp: 0.0
+        e_fn: 0.1927710843373494
+    fallback_fixed:
+      low:
+      - e_fp
+      - e_fn
+    estimates_by_band:
+      low:
+        n: 0
+        n_vinculos: 0
+        n_nao_vinculos: 0
+        fp: 0
+        fn: 0
+        n_unsure: 0
+        n_lt_10: true
+        denom_fp_lt_10: true
+        denom_fn_lt_10: true
+        e_fp: null
+        e_fp_ci95_low: null
+        e_fp_ci95_high: null
+        e_fp_fixed: 0.1
+        e_fp_abs_diff: null
+        e_fn: null
+        e_fn_ci95_low: null
+        e_fn_ci95_high: null
+        e_fn_fixed: 0.15
+        e_fn_abs_diff: null
+        u: null
+        u_ci95_low: null
+        u_ci95_high: null
+      grey_low:
+        n: 95
+        n_vinculos: 2
+        n_nao_vinculos: 93
+        fp: 7
+        fn: 2
+        n_unsure: 7
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: true
+        e_fp: 0.07526881720430108
+        e_fp_ci95_low: 0.036936683981680485
+        e_fp_ci95_high: 0.14729700103258916
+        e_fp_fixed: 0.08
+        e_fp_abs_diff: 0.004731182795698924
+        e_fn: 1.0
+        e_fn_ci95_low: 0.3423802275066532
+        e_fn_ci95_high: 1.0
+        e_fn_fixed: 0.12
+        e_fn_abs_diff: 0.88
+        u: 0.07368421052631578
+        u_ci95_low: 0.036148969609054685
+        u_ci95_high: 0.1443568528824959
+      grey_mid:
+        n: 596
+        n_vinculos: 43
+        n_nao_vinculos: 553
+        fp: 14
+        fn: 2
+        n_unsure: 35
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: false
+        e_fp: 0.02531645569620253
+        e_fp_ci95_low: 0.015139310422369994
+        e_fp_ci95_high: 0.04204295989228924
+        e_fp_fixed: 0.06
+        e_fp_abs_diff: 0.03468354430379747
+        e_fn: 0.046511627906976744
+        e_fn_ci95_low: 0.012849260094380241
+        e_fn_ci95_high: 0.1545549800406396
+        e_fn_fixed: 0.1
+        e_fn_abs_diff: 0.05348837209302326
+        u: 0.0587248322147651
+        u_ci95_low: 0.04252498966755829
+        u_ci95_high: 0.08057663616182104
+      grey_high:
+        n: 1261
+        n_vinculos: 65
+        n_nao_vinculos: 1196
+        fp: 30
+        fn: 7
+        n_unsure: 53
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: false
+        e_fp: 0.02508361204013378
+        e_fp_ci95_low: 0.017626028049269958
+        e_fp_ci95_high: 0.035582217382958164
+        e_fp_fixed: 0.04
+        e_fp_abs_diff: 0.014916387959866221
+        e_fn: 0.1076923076923077
+        e_fn_ci95_low: 0.05315421953112777
+        e_fn_ci95_high: 0.20601313581449843
+        e_fn_fixed: 0.08
+        e_fn_abs_diff: 0.027692307692307697
+        u: 0.04203013481363997
+        u_ci95_low: 0.03227565893796832
+        u_ci95_high: 0.05456641763588744
+      near_high:
+        n: 196
+        n_vinculos: 68
+        n_nao_vinculos: 128
+        fp: 4
+        fn: 18
+        n_unsure: 15
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: false
+        e_fp: 0.03125
+        e_fp_ci95_low: 0.01221826524505338
+        e_fp_ci95_high: 0.07759763126136074
+        e_fp_fixed: 0.02
+        e_fp_abs_diff: 0.01125
+        e_fn: 0.2647058823529412
+        e_fn_ci95_low: 0.17449740669878905
+        e_fn_ci95_high: 0.3800773398988912
+        e_fn_fixed: 0.06
+        e_fn_abs_diff: 0.20470588235294118
+        u: 0.07653061224489796
+        u_ci95_low: 0.04692438705773769
+        u_ci95_high: 0.1224171450767833
+      high:
+        n: 85
+        n_vinculos: 83
+        n_nao_vinculos: 2
+        fp: 0
+        fn: 16
+        n_unsure: 12
+        n_lt_10: false
+        denom_fp_lt_10: true
+        denom_fn_lt_10: false
+        e_fp: 0.0
+        e_fp_ci95_low: 0.0
+        e_fp_ci95_high: 0.6576197724933468
+        e_fp_fixed: 0.01
+        e_fp_abs_diff: 0.01
+        e_fn: 0.1927710843373494
+        e_fn_ci95_low: 0.12228902945885585
+        e_fn_ci95_high: 0.29043387164645346
+        e_fn_fixed: 0.03
+        e_fn_abs_diff: 0.1627710843373494
+        u: 0.1411764705882353
+        u_ci95_low: 0.08264232932726709
+        u_ci95_high: 0.23074130023340514
+  deepseek-v4.1-flash:
+    partial: false
+    error_rates_by_band:
+      low:
+        e_fp: 0.1
+        e_fn: 0.15
+      grey_low:
+        e_fp: 0.08
+        e_fn: 0.12
+      grey_mid:
+        e_fp: 0.1400560224089636
+        e_fn: 0.0
+      grey_high:
+        e_fp: 0.20639032815198619
+        e_fn: 0.0
+      near_high:
+        e_fp: 0.6129032258064516
+        e_fn: 0.0
+      high:
+        e_fp: 0.0
+        e_fn: 0.0
+    fallback_fixed:
+      low:
+      - e_fp
+      - e_fn
+      grey_low:
+      - e_fp
+      - e_fn
+    estimates_by_band:
+      low:
+        n: 0
+        n_vinculos: 0
+        n_nao_vinculos: 0
+        fp: 0
+        fn: 0
+        n_unsure: 0
+        n_lt_10: true
+        denom_fp_lt_10: true
+        denom_fn_lt_10: true
+        e_fp: null
+        e_fp_ci95_low: null
+        e_fp_ci95_high: null
+        e_fp_fixed: 0.1
+        e_fp_abs_diff: null
+        e_fn: null
+        e_fn_ci95_low: null
+        e_fn_ci95_high: null
+        e_fn_fixed: 0.15
+        e_fn_abs_diff: null
+        u: null
+        u_ci95_low: null
+        u_ci95_high: null
+      grey_low:
+        n: 0
+        n_vinculos: 0
+        n_nao_vinculos: 0
+        fp: 0
+        fn: 0
+        n_unsure: 0
+        n_lt_10: true
+        denom_fp_lt_10: true
+        denom_fn_lt_10: true
+        e_fp: null
+        e_fp_ci95_low: null
+        e_fp_ci95_high: null
+        e_fp_fixed: 0.08
+        e_fp_abs_diff: null
+        e_fn: null
+        e_fn_ci95_low: null
+        e_fn_ci95_high: null
+        e_fn_fixed: 0.12
+        e_fn_abs_diff: null
+        u: null
+        u_ci95_low: null
+        u_ci95_high: null
+      grey_mid:
+        n: 362
+        n_vinculos: 5
+        n_nao_vinculos: 357
+        fp: 50
+        fn: 0
+        n_unsure: 307
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: true
+        e_fp: 0.1400560224089636
+        e_fp_ci95_low: 0.10787582512222307
+        e_fp_ci95_high: 0.17990002846197953
+        e_fp_fixed: 0.06
+        e_fp_abs_diff: 0.08005602240896359
+        e_fn: 0.0
+        e_fn_ci95_low: 2.7755575615628914e-17
+        e_fn_ci95_high: 0.43448246478317465
+        e_fn_fixed: 0.1
+        e_fn_abs_diff: 0.1
+        u: 0.8480662983425414
+        u_ci95_low: 0.8074476563584947
+        u_ci95_high: 0.8813753130565436
+      grey_high:
+        n: 1211
+        n_vinculos: 53
+        n_nao_vinculos: 1158
+        fp: 239
+        fn: 0
+        n_unsure: 923
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: false
+        e_fp: 0.20639032815198619
+        e_fp_ci95_low: 0.18406945053611923
+        e_fp_ci95_high: 0.23065276062492718
+        e_fp_fixed: 0.04
+        e_fp_abs_diff: 0.16639032815198618
+        e_fn: 0.0
+        e_fn_ci95_low: 0.0
+        e_fn_ci95_high: 0.06758198857654184
+        e_fn_fixed: 0.08
+        e_fn_abs_diff: 0.08
+        u: 0.7621800165152767
+        u_ci95_low: 0.7373956829512448
+        u_ci95_high: 0.7853062674879719
+      near_high:
+        n: 192
+        n_vinculos: 68
+        n_nao_vinculos: 124
+        fp: 76
+        fn: 0
+        n_unsure: 63
+        n_lt_10: false
+        denom_fp_lt_10: false
+        denom_fn_lt_10: false
+        e_fp: 0.6129032258064516
+        e_fp_ci95_low: 0.5250083939975749
+        e_fp_ci95_high: 0.6940128864093689
+        e_fp_fixed: 0.02
+        e_fp_abs_diff: 0.5929032258064516
+        e_fn: 0.0
+        e_fn_ci95_low: 3.469446951953614e-18
+        e_fn_ci95_high: 0.05347133652007051
+        e_fn_fixed: 0.06
+        e_fn_abs_diff: 0.06
+        u: 0.328125
+        u_ci95_low: 0.2656503115659986
+        u_ci95_high: 0.3973423948944481
+      high:
+        n: 80
+        n_vinculos: 79
+        n_nao_vinculos: 1
+        fp: 0
+        fn: 0
+        n_unsure: 11
+        n_lt_10: false
+        denom_fp_lt_10: true
+        denom_fn_lt_10: false
+        e_fp: 0.0
+        e_fp_ci95_low: 0.0
+        e_fp_ci95_high: 0.7934506856227626
+        e_fp_fixed: 0.01
+        e_fp_abs_diff: 0.01
+        e_fn: 0.0
+        e_fn_ci95_low: 0.0
+        e_fn_ci95_high: 0.046371211653922634
+        e_fn_fixed: 0.03
+        e_fn_abs_diff: 0.03
+        u: 0.1375
+        u_ci95_low: 0.07854714324339113
+        u_ci95_high: 0.22967100066986607
+pooled:
+  partial: false
+  error_rates_by_band: *id001
+  fallback_fixed:
+    low:
+    - e_fp
+    - e_fn
+  estimates_by_band:
+    low:
+      n: 0
+      n_vinculos: 0
+      n_nao_vinculos: 0
+      fp: 0
+      fn: 0
+      n_unsure: 0
+      n_lt_10: true
+      denom_fp_lt_10: true
+      denom_fn_lt_10: true
+      e_fp: null
+      e_fp_ci95_low: null
+      e_fp_ci95_high: null
+      e_fp_fixed: 0.1
+      e_fp_abs_diff: null
+      e_fn: null
+      e_fn_ci95_low: null
+      e_fn_ci95_high: null
+      e_fn_fixed: 0.15
+      e_fn_abs_diff: null
+      u: null
+      u_ci95_low: null
+      u_ci95_high: null
+    grey_low:
+      n: 95
+      n_vinculos: 2
+      n_nao_vinculos: 93
+      fp: 7
+      fn: 2
+      n_unsure: 7
+      n_lt_10: false
+      denom_fp_lt_10: false
+      denom_fn_lt_10: true
+      e_fp: 0.07526881720430108
+      e_fp_ci95_low: 0.036936683981680485
+      e_fp_ci95_high: 0.14729700103258916
+      e_fp_fixed: 0.08
+      e_fp_abs_diff: 0.004731182795698924
+      e_fn: 1.0
+      e_fn_ci95_low: 0.3423802275066532
+      e_fn_ci95_high: 1.0
+      e_fn_fixed: 0.12
+      e_fn_abs_diff: 0.88
+      u: 0.07368421052631578
+      u_ci95_low: 0.036148969609054685
+      u_ci95_high: 0.1443568528824959
+    grey_mid:
+      n: 958
+      n_vinculos: 48
+      n_nao_vinculos: 910
+      fp: 64
+      fn: 2
+      n_unsure: 342
+      n_lt_10: false
+      denom_fp_lt_10: false
+      denom_fn_lt_10: false
+      e_fp: 0.07032967032967033
+      e_fp_ci95_low: 0.055459204515182076
+      e_fp_ci95_high: 0.08881249332487282
+      e_fp_fixed: 0.06
+      e_fp_abs_diff: 0.010329670329670332
+      e_fn: 0.041666666666666664
+      e_fn_ci95_low: 0.011501893489386586
+      e_fn_ci95_high: 0.1397565587045544
+      e_fn_fixed: 0.1
+      e_fn_abs_diff: 0.05833333333333334
+      u: 0.3569937369519833
+      u_ci95_low: 0.3272810052137872
+      u_ci95_high: 0.3878487622886978
+    grey_high:
+      n: 2472
+      n_vinculos: 118
+      n_nao_vinculos: 2354
+      fp: 269
+      fn: 7
+      n_unsure: 976
+      n_lt_10: false
+      denom_fp_lt_10: false
+      denom_fn_lt_10: false
+      e_fp: 0.11427357689039933
+      e_fp_ci95_low: 0.10204521136635251
+      e_fp_ci95_high: 0.12775881417305052
+      e_fp_fixed: 0.04
+      e_fp_abs_diff: 0.07427357689039932
+      e_fn: 0.059322033898305086
+      e_fn_ci95_low: 0.029029764881099727
+      e_fn_ci95_high: 0.1174019915455054
+      e_fn_fixed: 0.08
+      e_fn_abs_diff: 0.020677966101694915
+      u: 0.3948220064724919
+      u_ci95_low: 0.37573015434151064
+      u_ci95_high: 0.41424024212818517
+    near_high:
+      n: 388
+      n_vinculos: 136
+      n_nao_vinculos: 252
+      fp: 80
+      fn: 18
+      n_unsure: 78
+      n_lt_10: false
+      denom_fp_lt_10: false
+      denom_fn_lt_10: false
+      e_fp: 0.31746031746031744
+      e_fp_ci95_low: 0.263096415482564
+      e_fp_ci95_high: 0.3773058851294022
+      e_fp_fixed: 0.02
+      e_fp_abs_diff: 0.2974603174603174
+      e_fn: 0.1323529411764706
+      e_fn_ci95_low: 0.08538611971088712
+      e_fn_ci95_high: 0.1995183653873352
+      e_fn_fixed: 0.06
+      e_fn_abs_diff: 0.07235294117647059
+      u: 0.20103092783505155
+      u_ci95_low: 0.16417219209573852
+      u_ci95_high: 0.24375161285782893
+    high:
+      n: 165
+      n_vinculos: 162
+      n_nao_vinculos: 3
+      fp: 0
+      fn: 16
+      n_unsure: 23
+      n_lt_10: false
+      denom_fp_lt_10: true
+      denom_fn_lt_10: false
+      e_fp: 0.0
+      e_fp_ci95_low: 0.0
+      e_fp_ci95_high: 0.5614970317550454
+      e_fp_fixed: 0.01
+      e_fp_abs_diff: 0.01
+      e_fn: 0.09876543209876543
+      e_fn_ci95_low: 0.06171099822606378
+      e_fn_ci95_high: 0.15440781232688422
+      e_fn_fixed: 0.03
+      e_fn_abs_diff: 0.06876543209876543
+      u: 0.1393939393939394
+      u_ci95_low: 0.09471454915564012
+      u_ci95_high: 0.20048225362503622
+by_mode:
+  vigilancia:
+    models:
+      claude-haiku-5-5:
+        partial: false
+        error_rates_by_band:
+          low:
+            e_fp: 0.1
+            e_fn: 0.15
+          grey_low:
+            e_fp: 0.07526881720430108
+            e_fn: 1.0
+          grey_mid:
+            e_fp: 0.02531645569620253
+            e_fn: 0.046511627906976744
+          grey_high:
+            e_fp: 0.02826086956521739
+            e_fn: 0.09302325581395349
+          near_high:
+            e_fp: 0.03125
+            e_fn: 0.29411764705882354
+          high:
+            e_fp: 0.01
+            e_fn: 0.22727272727272727
+        fallback_fixed:
+          low:
+          - e_fp
+          - e_fn
+          high:
+          - e_fp
+        estimates_by_band:
+          low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.1
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.15
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_low:
+            n: 95
+            n_vinculos: 2
+            n_nao_vinculos: 93
+            fp: 7
+            fn: 2
+            n_unsure: 7
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: true
+            e_fp: 0.07526881720430108
+            e_fp_ci95_low: 0.036936683981680485
+            e_fp_ci95_high: 0.14729700103258916
+            e_fp_fixed: 0.08
+            e_fp_abs_diff: 0.004731182795698924
+            e_fn: 1.0
+            e_fn_ci95_low: 0.3423802275066532
+            e_fn_ci95_high: 1.0
+            e_fn_fixed: 0.12
+            e_fn_abs_diff: 0.88
+            u: 0.07368421052631578
+            u_ci95_low: 0.036148969609054685
+            u_ci95_high: 0.1443568528824959
+          grey_mid:
+            n: 596
+            n_vinculos: 43
+            n_nao_vinculos: 553
+            fp: 14
+            fn: 2
+            n_unsure: 35
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.02531645569620253
+            e_fp_ci95_low: 0.015139310422369994
+            e_fp_ci95_high: 0.04204295989228924
+            e_fp_fixed: 0.06
+            e_fp_abs_diff: 0.03468354430379747
+            e_fn: 0.046511627906976744
+            e_fn_ci95_low: 0.012849260094380241
+            e_fn_ci95_high: 0.1545549800406396
+            e_fn_fixed: 0.1
+            e_fn_abs_diff: 0.05348837209302326
+            u: 0.0587248322147651
+            u_ci95_low: 0.04252498966755829
+            u_ci95_high: 0.08057663616182104
+          grey_high:
+            n: 963
+            n_vinculos: 43
+            n_nao_vinculos: 920
+            fp: 26
+            fn: 4
+            n_unsure: 44
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.02826086956521739
+            e_fp_ci95_low: 0.019357838493953977
+            e_fp_ci95_high: 0.041087011959041596
+            e_fp_fixed: 0.04
+            e_fp_abs_diff: 0.01173913043478261
+            e_fn: 0.09302325581395349
+            e_fn_ci95_low: 0.036771640631712774
+            e_fn_ci95_high: 0.2160270364125358
+            e_fn_fixed: 0.08
+            e_fn_abs_diff: 0.013023255813953485
+            u: 0.04569055036344756
+            u_ci95_low: 0.03421022459650463
+            u_ci95_high: 0.060781004816348495
+          near_high:
+            n: 98
+            n_vinculos: 34
+            n_nao_vinculos: 64
+            fp: 2
+            fn: 10
+            n_unsure: 7
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.03125
+            e_fp_ci95_low: 0.008612138346171867
+            e_fp_ci95_high: 0.10697291770958312
+            e_fp_fixed: 0.02
+            e_fp_abs_diff: 0.01125
+            e_fn: 0.29411764705882354
+            e_fn_ci95_low: 0.1683463067042243
+            e_fn_ci95_high: 0.46168909794714436
+            e_fn_fixed: 0.06
+            e_fn_abs_diff: 0.23411764705882354
+            u: 0.07142857142857142
+            u_ci95_low: 0.03502845359806087
+            u_ci95_high: 0.1401601093633796
+          high:
+            n: 22
+            n_vinculos: 22
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 5
+            n_unsure: 3
+            n_lt_10: false
+            denom_fp_lt_10: true
+            denom_fn_lt_10: false
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.01
+            e_fp_abs_diff: null
+            e_fn: 0.22727272727272727
+            e_fn_ci95_low: 0.10123039985248514
+            e_fn_ci95_high: 0.4343995317522171
+            e_fn_fixed: 0.03
+            e_fn_abs_diff: 0.19727272727272727
+            u: 0.13636363636363635
+            u_ci95_low: 0.04749003714055253
+            u_ci95_high: 0.33334987166571717
+      deepseek-v4.1-flash:
+        partial: false
+        error_rates_by_band:
+          low:
+            e_fp: 0.1
+            e_fn: 0.15
+          grey_low:
+            e_fp: 0.08
+            e_fn: 0.12
+          grey_mid:
+            e_fp: 0.1400560224089636
+            e_fn: 0.0
+          grey_high:
+            e_fp: 0.20631341600901917
+            e_fn: 0.0
+          near_high:
+            e_fp: 0.5645161290322581
+            e_fn: 0.0
+          high:
+            e_fp: 0.01
+            e_fn: 0.0
+        fallback_fixed:
+          low:
+          - e_fp
+          - e_fn
+          grey_low:
+          - e_fp
+          - e_fn
+          high:
+          - e_fp
+        estimates_by_band:
+          low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.1
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.15
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.08
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.12
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_mid:
+            n: 362
+            n_vinculos: 5
+            n_nao_vinculos: 357
+            fp: 50
+            fn: 0
+            n_unsure: 307
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: true
+            e_fp: 0.1400560224089636
+            e_fp_ci95_low: 0.10787582512222307
+            e_fp_ci95_high: 0.17990002846197953
+            e_fp_fixed: 0.06
+            e_fp_abs_diff: 0.08005602240896359
+            e_fn: 0.0
+            e_fn_ci95_low: 2.7755575615628914e-17
+            e_fn_ci95_high: 0.43448246478317465
+            e_fn_fixed: 0.1
+            e_fn_abs_diff: 0.1
+            u: 0.8480662983425414
+            u_ci95_low: 0.8074476563584947
+            u_ci95_high: 0.8813753130565436
+          grey_high:
+            n: 930
+            n_vinculos: 43
+            n_nao_vinculos: 887
+            fp: 183
+            fn: 0
+            n_unsure: 707
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.20631341600901917
+            e_fp_ci95_low: 0.18097695346524093
+            e_fp_ci95_high: 0.23418273085198246
+            e_fp_fixed: 0.04
+            e_fp_abs_diff: 0.16631341600901917
+            e_fn: 0.0
+            e_fn_ci95_low: 6.938893903907228e-18
+            e_fn_ci95_high: 0.08200980322579113
+            e_fn_fixed: 0.08
+            e_fn_abs_diff: 0.08
+            u: 0.7602150537634409
+            u_ci95_low: 0.7317401070517201
+            u_ci95_high: 0.786549154394459
+          near_high:
+            n: 96
+            n_vinculos: 34
+            n_nao_vinculos: 62
+            fp: 35
+            fn: 0
+            n_unsure: 36
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.5645161290322581
+            e_fp_ci95_low: 0.44092987972148767
+            e_fp_ci95_high: 0.6805741109751094
+            e_fp_fixed: 0.02
+            e_fp_abs_diff: 0.5445161290322581
+            e_fn: 0.0
+            e_fn_ci95_low: 6.938893903907228e-18
+            e_fn_ci95_high: 0.10151455415332375
+            e_fn_fixed: 0.06
+            e_fn_abs_diff: 0.06
+            u: 0.375
+            u_ci95_low: 0.2847260813834063
+            u_ci95_high: 0.47489281558101265
+          high:
+            n: 22
+            n_vinculos: 22
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 3
+            n_lt_10: false
+            denom_fp_lt_10: true
+            denom_fn_lt_10: false
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.01
+            e_fp_abs_diff: null
+            e_fn: 0.0
+            e_fn_ci95_low: 0.0
+            e_fn_ci95_high: 0.14865487460862087
+            e_fn_fixed: 0.03
+            e_fn_abs_diff: 0.03
+            u: 0.13636363636363635
+            u_ci95_low: 0.04749003714055253
+            u_ci95_high: 0.33334987166571717
+    pooled:
+      partial: false
+      error_rates_by_band:
+        low:
+          e_fp: 0.1
+          e_fn: 0.15
+        grey_low:
+          e_fp: 0.07526881720430108
+          e_fn: 1.0
+        grey_mid:
+          e_fp: 0.07032967032967033
+          e_fn: 0.041666666666666664
+        grey_high:
+          e_fp: 0.11566131710016603
+          e_fn: 0.046511627906976744
+        near_high:
+          e_fp: 0.29365079365079366
+          e_fn: 0.14705882352941177
+        high:
+          e_fp: 0.01
+          e_fn: 0.11363636363636363
+      fallback_fixed:
+        low:
+        - e_fp
+        - e_fn
+        high:
+        - e_fp
+      estimates_by_band:
+        low:
+          n: 0
+          n_vinculos: 0
+          n_nao_vinculos: 0
+          fp: 0
+          fn: 0
+          n_unsure: 0
+          n_lt_10: true
+          denom_fp_lt_10: true
+          denom_fn_lt_10: true
+          e_fp: null
+          e_fp_ci95_low: null
+          e_fp_ci95_high: null
+          e_fp_fixed: 0.1
+          e_fp_abs_diff: null
+          e_fn: null
+          e_fn_ci95_low: null
+          e_fn_ci95_high: null
+          e_fn_fixed: 0.15
+          e_fn_abs_diff: null
+          u: null
+          u_ci95_low: null
+          u_ci95_high: null
+        grey_low:
+          n: 95
+          n_vinculos: 2
+          n_nao_vinculos: 93
+          fp: 7
+          fn: 2
+          n_unsure: 7
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: true
+          e_fp: 0.07526881720430108
+          e_fp_ci95_low: 0.036936683981680485
+          e_fp_ci95_high: 0.14729700103258916
+          e_fp_fixed: 0.08
+          e_fp_abs_diff: 0.004731182795698924
+          e_fn: 1.0
+          e_fn_ci95_low: 0.3423802275066532
+          e_fn_ci95_high: 1.0
+          e_fn_fixed: 0.12
+          e_fn_abs_diff: 0.88
+          u: 0.07368421052631578
+          u_ci95_low: 0.036148969609054685
+          u_ci95_high: 0.1443568528824959
+        grey_mid:
+          n: 958
+          n_vinculos: 48
+          n_nao_vinculos: 910
+          fp: 64
+          fn: 2
+          n_unsure: 342
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: false
+          e_fp: 0.07032967032967033
+          e_fp_ci95_low: 0.055459204515182076
+          e_fp_ci95_high: 0.08881249332487282
+          e_fp_fixed: 0.06
+          e_fp_abs_diff: 0.010329670329670332
+          e_fn: 0.041666666666666664
+          e_fn_ci95_low: 0.011501893489386586
+          e_fn_ci95_high: 0.1397565587045544
+          e_fn_fixed: 0.1
+          e_fn_abs_diff: 0.05833333333333334
+          u: 0.3569937369519833
+          u_ci95_low: 0.3272810052137872
+          u_ci95_high: 0.3878487622886978
+        grey_high:
+          n: 1893
+          n_vinculos: 86
+          n_nao_vinculos: 1807
+          fp: 209
+          fn: 4
+          n_unsure: 751
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: false
+          e_fp: 0.11566131710016603
+          e_fp_ci95_low: 0.10172380496985796
+          e_fp_ci95_high: 0.13122947581896233
+          e_fp_fixed: 0.04
+          e_fp_abs_diff: 0.07566131710016602
+          e_fn: 0.046511627906976744
+          e_fn_ci95_low: 0.018233968238320825
+          e_fn_ci95_high: 0.11356997813711978
+          e_fn_fixed: 0.08
+          e_fn_abs_diff: 0.03348837209302326
+          u: 0.3967247754886424
+          u_ci95_low: 0.3749171078536691
+          u_ci95_high: 0.4189507464249416
+        near_high:
+          n: 194
+          n_vinculos: 68
+          n_nao_vinculos: 126
+          fp: 37
+          fn: 10
+          n_unsure: 43
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: false
+          e_fp: 0.29365079365079366
+          e_fp_ci95_low: 0.22118130297473335
+          e_fp_ci95_high: 0.3783302823671263
+          e_fp_fixed: 0.02
+          e_fp_abs_diff: 0.27365079365079364
+          e_fn: 0.14705882352941177
+          e_fn_ci95_low: 0.08188817736343275
+          e_fn_ci95_high: 0.2499739425330877
+          e_fn_fixed: 0.06
+          e_fn_abs_diff: 0.08705882352941177
+          u: 0.22164948453608246
+          u_ci95_low: 0.16892478874704708
+          u_ci95_high: 0.2851835632446273
+        high:
+          n: 44
+          n_vinculos: 44
+          n_nao_vinculos: 0
+          fp: 0
+          fn: 5
+          n_unsure: 6
+          n_lt_10: false
+          denom_fp_lt_10: true
+          denom_fn_lt_10: false
+          e_fp: null
+          e_fp_ci95_low: null
+          e_fp_ci95_high: null
+          e_fp_fixed: 0.01
+          e_fp_abs_diff: null
+          e_fn: 0.11363636363636363
+          e_fn_ci95_low: 0.04952780601092492
+          e_fn_ci95_high: 0.2397915241660828
+          e_fn_fixed: 0.03
+          e_fn_abs_diff: 0.08363636363636363
+          u: 0.13636363636363635
+          u_ci95_low: 0.06402954497555874
+          u_ci95_high: 0.26709453048515436
+  confirmacao:
+    models:
+      claude-haiku-5-5:
+        partial: false
+        error_rates_by_band:
+          low:
+            e_fp: 0.1
+            e_fn: 0.15
+          grey_low:
+            e_fp: 0.08
+            e_fn: 0.12
+          grey_mid:
+            e_fp: 0.06
+            e_fn: 0.1
+          grey_high:
+            e_fp: 0.014492753623188406
+            e_fn: 0.13636363636363635
+          near_high:
+            e_fp: 0.03125
+            e_fn: 0.23529411764705882
+          high:
+            e_fp: 0.0
+            e_fn: 0.18032786885245902
+        fallback_fixed:
+          low:
+          - e_fp
+          - e_fn
+          grey_low:
+          - e_fp
+          - e_fn
+          grey_mid:
+          - e_fp
+          - e_fn
+        estimates_by_band:
+          low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.1
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.15
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.08
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.12
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_mid:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.06
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.1
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_high:
+            n: 298
+            n_vinculos: 22
+            n_nao_vinculos: 276
+            fp: 4
+            fn: 3
+            n_unsure: 9
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.014492753623188406
+            e_fp_ci95_low: 0.005650001281796867
+            e_fp_ci95_high: 0.03666488254776976
+            e_fp_fixed: 0.04
+            e_fp_abs_diff: 0.025507246376811593
+            e_fn: 0.13636363636363635
+            e_fn_ci95_low: 0.04749003714055253
+            e_fn_ci95_high: 0.33334987166571717
+            e_fn_fixed: 0.08
+            e_fn_abs_diff: 0.05636363636363635
+            u: 0.030201342281879196
+            u_ci95_low: 0.015968844395989907
+            u_ci95_high: 0.056391854184084295
+          near_high:
+            n: 98
+            n_vinculos: 34
+            n_nao_vinculos: 64
+            fp: 2
+            fn: 8
+            n_unsure: 8
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.03125
+            e_fp_ci95_low: 0.008612138346171867
+            e_fp_ci95_high: 0.10697291770958312
+            e_fp_fixed: 0.02
+            e_fp_abs_diff: 0.01125
+            e_fn: 0.23529411764705882
+            e_fn_ci95_low: 0.12436985532639583
+            e_fn_ci95_high: 0.39996137922536384
+            e_fn_fixed: 0.06
+            e_fn_abs_diff: 0.17529411764705882
+            u: 0.08163265306122448
+            u_ci95_low: 0.041944058967642
+            u_ci95_high: 0.1528828715423356
+          high:
+            n: 63
+            n_vinculos: 61
+            n_nao_vinculos: 2
+            fp: 0
+            fn: 11
+            n_unsure: 9
+            n_lt_10: false
+            denom_fp_lt_10: true
+            denom_fn_lt_10: false
+            e_fp: 0.0
+            e_fp_ci95_low: 0.0
+            e_fp_ci95_high: 0.6576197724933468
+            e_fp_fixed: 0.01
+            e_fp_abs_diff: 0.01
+            e_fn: 0.18032786885245902
+            e_fn_ci95_low: 0.10379140124053361
+            e_fn_ci95_high: 0.29474156348121067
+            e_fn_fixed: 0.03
+            e_fn_abs_diff: 0.15032786885245902
+            u: 0.14285714285714285
+            u_ci95_low: 0.07701948334720693
+            u_ci95_high: 0.24974565921625858
+      deepseek-v4.1-flash:
+        partial: false
+        error_rates_by_band:
+          low:
+            e_fp: 0.1
+            e_fn: 0.15
+          grey_low:
+            e_fp: 0.08
+            e_fn: 0.12
+          grey_mid:
+            e_fp: 0.06
+            e_fn: 0.1
+          grey_high:
+            e_fp: 0.2066420664206642
+            e_fn: 0.0
+          near_high:
+            e_fp: 0.6612903225806451
+            e_fn: 0.0
+          high:
+            e_fp: 0.0
+            e_fn: 0.0
+        fallback_fixed:
+          low:
+          - e_fp
+          - e_fn
+          grey_low:
+          - e_fp
+          - e_fn
+          grey_mid:
+          - e_fp
+          - e_fn
+        estimates_by_band:
+          low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.1
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.15
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_low:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.08
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.12
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_mid:
+            n: 0
+            n_vinculos: 0
+            n_nao_vinculos: 0
+            fp: 0
+            fn: 0
+            n_unsure: 0
+            n_lt_10: true
+            denom_fp_lt_10: true
+            denom_fn_lt_10: true
+            e_fp: null
+            e_fp_ci95_low: null
+            e_fp_ci95_high: null
+            e_fp_fixed: 0.06
+            e_fp_abs_diff: null
+            e_fn: null
+            e_fn_ci95_low: null
+            e_fn_ci95_high: null
+            e_fn_fixed: 0.1
+            e_fn_abs_diff: null
+            u: null
+            u_ci95_low: null
+            u_ci95_high: null
+          grey_high:
+            n: 281
+            n_vinculos: 10
+            n_nao_vinculos: 271
+            fp: 56
+            fn: 0
+            n_unsure: 216
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.2066420664206642
+            e_fp_ci95_low: 0.16269842209391622
+            e_fp_ci95_high: 0.2587862378906198
+            e_fp_fixed: 0.04
+            e_fp_abs_diff: 0.1666420664206642
+            e_fn: 0.0
+            e_fn_ci95_low: 2.7755575615628914e-17
+            e_fn_ci95_high: 0.27753279986288915
+            e_fn_fixed: 0.08
+            e_fn_abs_diff: 0.08
+            u: 0.7686832740213523
+            u_ci95_low: 0.7159565673669968
+            u_ci95_high: 0.8141628914546684
+          near_high:
+            n: 96
+            n_vinculos: 34
+            n_nao_vinculos: 62
+            fp: 41
+            fn: 0
+            n_unsure: 27
+            n_lt_10: false
+            denom_fp_lt_10: false
+            denom_fn_lt_10: false
+            e_fp: 0.6612903225806451
+            e_fp_ci95_low: 0.5371769954935819
+            e_fp_ci95_high: 0.7665829812479108
+            e_fp_fixed: 0.02
+            e_fp_abs_diff: 0.6412903225806451
+            e_fn: 0.0
+            e_fn_ci95_low: 6.938893903907228e-18
+            e_fn_ci95_high: 0.10151455415332375
+            e_fn_fixed: 0.06
+            e_fn_abs_diff: 0.06
+            u: 0.28125
+            u_ci95_low: 0.20107410838369374
+            u_ci95_high: 0.37825896130403935
+          high:
+            n: 58
+            n_vinculos: 57
+            n_nao_vinculos: 1
+            fp: 0
+            fn: 0
+            n_unsure: 8
+            n_lt_10: false
+            denom_fp_lt_10: true
+            denom_fn_lt_10: false
+            e_fp: 0.0
+            e_fp_ci95_low: 0.0
+            e_fp_ci95_high: 0.7934506856227626
+            e_fp_fixed: 0.01
+            e_fp_abs_diff: 0.01
+            e_fn: 0.0
+            e_fn_ci95_low: 0.0
+            e_fn_ci95_high: 0.06313883485297893
+            e_fn_fixed: 0.03
+            e_fn_abs_diff: 0.03
+            u: 0.13793103448275862
+            u_ci95_low: 0.07158487019718124
+            u_ci95_high: 0.24925909433837945
+    pooled:
+      partial: false
+      error_rates_by_band:
+        low:
+          e_fp: 0.1
+          e_fn: 0.15
+        grey_low:
+          e_fp: 0.08
+          e_fn: 0.12
+        grey_mid:
+          e_fp: 0.06
+          e_fn: 0.1
+        grey_high:
+          e_fp: 0.10968921389396709
+          e_fn: 0.09375
+        near_high:
+          e_fp: 0.3412698412698413
+          e_fn: 0.11764705882352941
+        high:
+          e_fp: 0.0
+          e_fn: 0.09322033898305085
+      fallback_fixed:
+        low:
+        - e_fp
+        - e_fn
+        grey_low:
+        - e_fp
+        - e_fn
+        grey_mid:
+        - e_fp
+        - e_fn
+      estimates_by_band:
+        low:
+          n: 0
+          n_vinculos: 0
+          n_nao_vinculos: 0
+          fp: 0
+          fn: 0
+          n_unsure: 0
+          n_lt_10: true
+          denom_fp_lt_10: true
+          denom_fn_lt_10: true
+          e_fp: null
+          e_fp_ci95_low: null
+          e_fp_ci95_high: null
+          e_fp_fixed: 0.1
+          e_fp_abs_diff: null
+          e_fn: null
+          e_fn_ci95_low: null
+          e_fn_ci95_high: null
+          e_fn_fixed: 0.15
+          e_fn_abs_diff: null
+          u: null
+          u_ci95_low: null
+          u_ci95_high: null
+        grey_low:
+          n: 0
+          n_vinculos: 0
+          n_nao_vinculos: 0
+          fp: 0
+          fn: 0
+          n_unsure: 0
+          n_lt_10: true
+          denom_fp_lt_10: true
+          denom_fn_lt_10: true
+          e_fp: null
+          e_fp_ci95_low: null
+          e_fp_ci95_high: null
+          e_fp_fixed: 0.08
+          e_fp_abs_diff: null
+          e_fn: null
+          e_fn_ci95_low: null
+          e_fn_ci95_high: null
+          e_fn_fixed: 0.12
+          e_fn_abs_diff: null
+          u: null
+          u_ci95_low: null
+          u_ci95_high: null
+        grey_mid:
+          n: 0
+          n_vinculos: 0
+          n_nao_vinculos: 0
+          fp: 0
+          fn: 0
+          n_unsure: 0
+          n_lt_10: true
+          denom_fp_lt_10: true
+          denom_fn_lt_10: true
+          e_fp: null
+          e_fp_ci95_low: null
+          e_fp_ci95_high: null
+          e_fp_fixed: 0.06
+          e_fp_abs_diff: null
+          e_fn: null
+          e_fn_ci95_low: null
+          e_fn_ci95_high: null
+          e_fn_fixed: 0.1
+          e_fn_abs_diff: null
+          u: null
+          u_ci95_low: null
+          u_ci95_high: null
+        grey_high:
+          n: 579
+          n_vinculos: 32
+          n_nao_vinculos: 547
+          fp: 60
+          fn: 3
+          n_unsure: 225
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: false
+          e_fp: 0.10968921389396709
+          e_fp_ci95_low: 0.08617277709682235
+          e_fp_ci95_high: 0.13864955033987494
+          e_fp_fixed: 0.04
+          e_fp_abs_diff: 0.0696892138939671
+          e_fn: 0.09375
+          e_fn_ci95_low: 0.032401551298366194
+          e_fn_ci95_high: 0.24218154728387864
+          e_fn_fixed: 0.08
+          e_fn_abs_diff: 0.013749999999999998
+          u: 0.38860103626943004
+          u_ci95_low: 0.3497565196258212
+          u_ci95_high: 0.4289139952325157
+        near_high:
+          n: 194
+          n_vinculos: 68
+          n_nao_vinculos: 126
+          fp: 43
+          fn: 8
+          n_unsure: 35
+          n_lt_10: false
+          denom_fp_lt_10: false
+          denom_fn_lt_10: false
+          e_fp: 0.3412698412698413
+          e_fp_ci95_low: 0.2642771098758241
+          e_fp_ci95_high: 0.42765487884868325
+          e_fp_fixed: 0.02
+          e_fp_abs_diff: 0.32126984126984126
+          e_fn: 0.11764705882352941
+          e_fn_ci95_low: 0.060834926023313446
+          e_fn_ci95_high: 0.21534903719791695
+          e_fn_fixed: 0.06
+          e_fn_abs_diff: 0.05764705882352941
+          u: 0.18041237113402062
+          u_ci95_low: 0.13267746014151946
+          u_ci95_high: 0.24055805510818076
+        high:
+          n: 121
+          n_vinculos: 118
+          n_nao_vinculos: 3
+          fp: 0
+          fn: 11
+          n_unsure: 17
+          n_lt_10: false
+          denom_fp_lt_10: true
+          denom_fn_lt_10: false
+          e_fp: 0.0
+          e_fp_ci95_low: 0.0
+          e_fp_ci95_high: 0.5614970317550454
+          e_fp_fixed: 0.01
+          e_fp_abs_diff: 0.01
+          e_fn: 0.09322033898305085
+          e_fn_ci95_low: 0.05285160077223935
+          e_fn_ci95_high: 0.15923925131385772
+          e_fn_fixed: 0.03
+          e_fn_abs_diff: 0.06322033898305085
+          u: 0.14049586776859505
+          u_ci95_low: 0.0896053168714549
+          u_ci95_high: 0.21351080479326084

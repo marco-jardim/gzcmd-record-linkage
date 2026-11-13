@@ -52,6 +52,18 @@ def _bool_indicator(df: pd.DataFrame, col: str) -> pd.Series:
     return s.fillna(0.0).gt(0.0)
 
 
+def strong_birth_conflict(df: pd.DataFrame) -> pd.Series:
+    """Known birth years differ; missing one side is not evidence of conflict."""
+    difference = _num(df, "diff_ano")
+    return difference.notna() & difference.gt(0)
+
+
+def high_guard_birth_variant(df: pd.DataFrame) -> pd.Series:
+    """Evaluation-only stricter subset of the existing p>=.9 high-score guard."""
+    nota = _num(df, "nota final").fillna(_num(df, "nota_final"))
+    return nota.ge(9) & _num(df, "p_cal").ge(0.95) & ~strong_birth_conflict(df)
+
+
 def apply_guardrails(
     df: pd.DataFrame,
     *,
@@ -71,7 +83,8 @@ def apply_guardrails(
     Expected columns (best effort; rules degrade gracefully):
     - R_DTOBITO_dt, C_DTDIAG_dt (datetime64)
     - nota final (or nota_final alias)
-    - DTNASC comparison subscores: DTNASC ano igual, DTNASC mes igual, DTNASC dia igual, DTNASC dt iguais
+    - DTNASC comparison subscores: DTNASC ano igual, DTNASC mes igual,
+      DTNASC dia igual, DTNASC dt iguais
     - diff_ano (from raw DOB years)
     - ENDERECO subscores
     - NOME subscores
@@ -95,9 +108,14 @@ def apply_guardrails(
         # Relaxed probability consistency; no exact DOB/municipality requirement.
         # Unqualified high scores go to Bayesian argmin, NOT mandatory review.
         _set(nota.lt(5), GuardrailDecision.ALWAYS_NONMATCH.value, "nota_final_low")
-        _set(nota.ge(9) & _num(df, "p_cal").ge(0.9),
-             GuardrailDecision.ALWAYS_MATCH.value, "nota_high_probability_consistent")
-        out_reason = out_reason.mask(nota.ge(9) & out_guardrail.isna(), "high_probability_inconsistent")
+        _set(
+            nota.ge(9) & _num(df, "p_cal").ge(0.9),
+            GuardrailDecision.ALWAYS_MATCH.value,
+            "nota_high_probability_consistent",
+        )
+        out_reason = out_reason.mask(
+            nota.ge(9) & out_guardrail.isna(), "high_probability_inconsistent"
+        )
         out_reason = out_reason.mask(out_reason.eq(""), pd.NA)
         return GuardrailOutput(guardrail=out_guardrail, reason=out_reason)
 

@@ -17,7 +17,7 @@ from .calibration import (
     predict_platt,
     predict_stub,
 )
-from .classifier import ClassifierConfig, GZCMDClassifier
+from .classifier import ClassifierConfig, FeatureSet, GZCMDClassifier
 from .config import GZCMDConfig, load_config
 from .guardrails import apply_guardrails
 from .loader import LoadConfig, load_comparador_csv
@@ -138,7 +138,16 @@ def evaluate_v3_dataframe(
     macd_enabled: bool,
     guardrails_enabled: bool = True,
     classifier_config: ClassifierConfig | None = None,
+    feature_set: FeatureSet = "historical",
+    policy_version: str | None = None,
 ) -> pd.DataFrame:
+    if feature_set not in ("historical", "allowlist"):
+        raise ValueError("feature_set must be historical or allowlist")
+    if policy_version not in (None, "v3", "v3.1"):
+        raise ValueError("policy_version must be v3 or v3.1")
+    # Explicit v3 over a v3.1 YAML restores the 0.3.0 guard thresholds (10/3); the
+    # engine applies its own legacy costs for the same case (see runner.py).
+    legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
     work = df.copy()
     y_all = _ensure_binary_target(work)
 
@@ -158,10 +167,15 @@ def evaluate_v3_dataframe(
         g = apply_guardrails(
             work,
             temporal_days=cfg.guardrails.temporal_days,
-            nota_always_match=cfg.guardrails.nota_always_match,
-            nota_always_nonmatch=cfg.guardrails.nota_always_nonmatch,
+            nota_always_match=(
+                10.0 if legacy_override else cfg.guardrails.nota_always_match
+            ),
+            nota_always_nonmatch=(
+                3.0 if legacy_override else cfg.guardrails.nota_always_nonmatch
+            ),
             homonimia_min_nota=cfg.guardrails.homonimia_min_nota,
             homonimia_year_gap=cfg.guardrails.homonimia_year_gap,
+            policy_version=policy_version or "v3",
         )
         work["guardrail"] = g.guardrail
     else:
@@ -212,7 +226,9 @@ def evaluate_v3_dataframe(
                         replace(classifier_config, classifier_type="random_forest")
                         if classifier_config is not None
                         else ClassifierConfig(classifier_type="random_forest")
-                    )
+                    ),
+                    feature_set=feature_set,
+                    macd_enabled=macd_enabled,
                 )
                 clf.fit(train)
                 probs = clf.predict_proba(test)[:, 1]
@@ -223,7 +239,9 @@ def evaluate_v3_dataframe(
                         replace(classifier_config, classifier_type="xgboost")
                         if classifier_config is not None
                         else ClassifierConfig(classifier_type="xgboost")
-                    )
+                    ),
+                    feature_set=feature_set,
+                    macd_enabled=macd_enabled,
                 )
                 clf.fit(train)
                 probs = clf.predict_proba(test)[:, 1]
@@ -233,9 +251,14 @@ def evaluate_v3_dataframe(
                     "calibration must be one of: platt, stub, ml_rf, ml_xgb"
                 )
 
-            # This evaluator's expected metrics cover the historical three actions.
+            # Default (None) keeps the historical three-action evaluation; an explicit
+            # policy_version is forwarded as-is (actions other than MATCH/NONMATCH/
+            # LLM_REVIEW count as undecided in the metrics below).
             engine = build_engine_from_config(
-                cfg, mode=str(mode), llm_used=0, policy_version="v3"
+                cfg,
+                mode=str(mode),
+                llm_used=0,
+                policy_version=policy_version or "v3",
             )
             out = engine.triage(test)
 
@@ -311,6 +334,8 @@ def evaluate_v3_csv(
     macd_enabled: bool,
     guardrails_enabled: bool = True,
     classifier_config: ClassifierConfig | None = None,
+    feature_set: FeatureSet = "historical",
+    policy_version: str | None = None,
 ) -> pd.DataFrame:
     cfg = load_config(config_path)
     df = load_comparador_csv(Path(input_csv), cfg=LoadConfig(macd_enabled=macd_enabled))
@@ -337,4 +362,6 @@ def evaluate_v3_csv(
         macd_enabled=macd_enabled,
         guardrails_enabled=guardrails_enabled,
         classifier_config=classifier_config,
+        feature_set=feature_set,
+        policy_version=policy_version,
     )
