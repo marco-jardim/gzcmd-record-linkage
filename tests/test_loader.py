@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from gzcmd_record_linkage.loader import LoadConfig, feature_engineer
+from gzcmd_record_linkage.loader import (
+    LoadConfig,
+    feature_engineer,
+    parse_date_ddmmyyyy,
+    parse_date_yyyymmdd,
+)
 
 
 def _base_df() -> pd.DataFrame:
@@ -59,3 +64,29 @@ def test_feature_engineer_macd_toggle() -> None:
     out_on = feature_engineer(_base_df(), cfg=LoadConfig(macd_enabled=True))
     assert "macd_nasc_diff_capped" in out_on.columns
     assert "macd_nasc_year_match" in out_on.columns
+
+
+def test_parse_dates_all_missing_series_does_not_crash():
+    # A column that is entirely empty becomes float/NaN in pandas; the parser
+    # used to call .zfill on that float (loader.py:91 crash on the thesis CSV).
+    empty = pd.Series([float("nan")] * 3)
+    for parse in (parse_date_yyyymmdd, parse_date_ddmmyyyy):
+        assert parse(empty).isna().all()
+        assert parse(pd.Series([None, None], dtype=object)).isna().all()
+
+
+def test_parse_dates_mixed_missing_and_zero_dates():
+    mixed = pd.Series(["20200131", None, float("nan"), "00000000"])
+    got = parse_date_yyyymmdd(mixed)
+    assert got.iloc[0] == pd.Timestamp("2020-01-31")
+    assert got.iloc[1:4].isna().all()
+    day_first = parse_date_ddmmyyyy(pd.Series(["31012020", float("nan")]))
+    assert day_first.iloc[0] == pd.Timestamp("2020-01-31")
+    assert pd.isna(day_first.iloc[1])
+
+
+def test_feature_engineer_with_entirely_missing_date_column():
+    df = _base_df()
+    df["R_DTOBITO,C,10,0"] = float("nan")
+    out = feature_engineer(df, cfg=LoadConfig(macd_enabled=True))
+    assert out["R_DTOBITO_dt"].isna().all()
