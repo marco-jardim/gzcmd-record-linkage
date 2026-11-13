@@ -11,6 +11,27 @@ Adicionado:
   AUC de recuperação) e `compare_queues` (média e P10/P90 das fusões
   adaptativas sobre sementes). Nenhuma fusão é padrão recomendado: a F4 foi
   escolhida *post hoc*. Nenhuma alteração em `ranking.py`.
+- `robustness.py`: *bootstrap* por `REFREC` das fusões (`fusao_robustez.py`):
+  `bootstrap_fusion_differences`, `BootstrapResult`, `subset_effort`. Resultado
+  condicional às probabilidades OOF e à referência fixas, sem incerteza de
+  treinamento nem erro da revisão; escolha da F4 *post hoc*.
+- `np_policy.py` (`NPConstraints`, `NPInfeasibleError`) e `policy_kind="np"`
+  (motor, `config.py`, `runner.py`): política NP da tese, só para `confirmacao`
+  e só na v3.1; sob a v3, em `run_v3`/`build_engine_from_config`, o NP é
+  rebaixado silenciosamente para custo, como na tese (o motor direto levanta
+  `ValueError`).
+- `context.py` (`context_features`, `context_queues`, `THESIS_CONTEXT_FUSIONS`,
+  `MACD_COLUMNS`) e `oof.py` (`nested_oof_probabilities`): filas de contexto
+  C/CM e isotônica OOF aninhada, de `contexto_obito.py` e `ml_oof.py`. Uso
+  exploratório; `COMPREC` pode cruzar partições de `REFREC`.
+
+Corrigido:
+
+- `loader.parse_date_yyyymmdd`/`parse_date_ddmmyyyy`: coluna de data
+  inteiramente ausente (float/NaN no pandas) quebrava com `'float' object has no
+  attribute 'zfill'`, impedindo `load_comparador_csv` de carregar a base da tese.
+  Datas ausentes agora tratadas como na tese; teste de regressão e de paridade
+  da derivação MACD.
 
 ## 0.5.0 (2026-11-13, no repositório, ainda não publicada)
 

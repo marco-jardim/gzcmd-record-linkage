@@ -22,7 +22,8 @@ Os contratos foram conferidos em `tests/test_m1_m2_m6.py` da referência e em
 `M1_M2_M6.md`: quatro perdas, prioridade estável por ganho, limites humanos e
 LLM, guardas probabilísticas e preservação histórica. A alternativa NP de
 `test_np_policy.py`, os modelos OOF e o restante da cadeia experimental
-não integram a portabilidade de 0.4.0 (o carregamento de taxas medidas veio em 0.5.0, ver abaixo). Paridade de política exige as mesmas entradas,
+não integram a portabilidade de 0.4.0 (NP, OOF, *bootstrap* e C/CM foram portados
+depois, ver o mapeamento) (o carregamento de taxas medidas veio em 0.5.0, ver abaixo). Paridade de política exige as mesmas entradas,
 custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 
 ## Mapeamento função a função
@@ -52,6 +53,14 @@ custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 | `scripts/fusao_filas.py` (`thompson`) | `fusion.simulate_thompson`, sobre `ranking.ThompsonQueue` | Mesmo gerador, mesma ordem de sorteios, janela por braço; igualdade exata testada |
 | `scripts/fusao_filas.py` (`metrics`, `aggregate`) | `fusion.queue_metrics`, `fusion.compare_queues` | `searchsorted + 1`, `C(k)` e AUC em degraus `counts[:H-1].sum()/(H*total)`; média e P10/P90 lineares. Meta inalcançável: `None` (a tese rejeita a curva) |
 | `runner.build_engine_from_config` (taxas medidas) | Mesmo nome | v3.1 com `estimated_rates_path` usa as taxas medidas (mudança incompatível em 0.5.0); v3 e o override histórico nunca leem o arquivo |
+| `scripts/fusao_robustez.py` | `robustness.py` (`bootstrap_fusion_differences`, `BootstrapResult`, `subset_effort`) | Igualdade exata, réplica a réplica, contra cópia inline da tese (`tests/test_robustness.py`); filas base por maior escore e empate por `tie_ids`/posição, como `queue()` de `sensibilidade_o3_macd.py`, cópias contíguas com a ordem da original; condicional às probabilidades OOF e à referência fixas |
+| `np_policy.py`; `PolicyEngineV3._triage_np`; configuração NP | `np_policy.py` (`NPConstraints`, `NPInfeasibleError`); `gzcmd_v3_policy_engine.py`; `config.py`; `runner.py` | `policy_kind="np"`, só `confirmacao`, só v3.1; padrões 0,002 / sem limite absoluto / 0,02; sob a v3, via `run_v3`/`build_engine_from_config`, o NP é rebaixado silenciosamente para custo, como na tese (o motor construído direto levanta `ValueError`) |
+| `scripts/contexto_obito.py` | `context.py` (`context_features`, `context_queues`, `THESIS_CONTEXT_FUSIONS`, `MACD_COLUMNS`) | Paridade exata dos atributos e das matrizes C/CM sobre a base real (`tests/test_context.py`, que inclui a derivação MACD pelo carregador do pacote; testes de paridade ignorados se `D:\git\phd-research` não estiver presente); colunas MACD na ordem da tese |
+| `gzcmd/ml_oof.py` | `oof.py` (`nested_oof_probabilities`) | Isotônica OOF aninhada; paridade testada contra a tese (`tests/test_oof.py`; ignorada se `D:\git\phd-research` não estiver presente) |
+
+Reprodução com dados completos das filas de contexto (reportada pelo porte;
+reproduzido em 13/11/2026, script ad hoc, não é teste): C 20/75/9.801, CM
+14/74/1.298 e F4_contexto 9/91/1.404 (revisões até as metas).
 
 Validação de probabilidades v3.1 antecede o cálculo de perdas no pacote para
 evitar avisos numéricos com infinito; a referência rejeita a mesma entrada no
@@ -76,15 +85,13 @@ externa alinha as colunas pelo nome antes de conferir os valores.
 
 Conferidos na referência `08befb1` e deliberadamente fora do pacote 0.5.0:
 
-- política NP (`np_policy.py` e `_triage_np`);
+- `np_evaluation.compare_confirmation` (a política NP em si foi
+  portada, ver o mapeamento);
 - `arranjo_corte.py` (ASR);
-- calibração isotônica OOF;
 - lista de atributos permitidos (*allowlist*) e `--policy-version` do commit
   `f566368` da tese;
 - `subamostragem.py`;
-- `anthropic_transport.py`;
-- `scripts/fusao_robustez.py` (*bootstrap* por `REFREC` das fusões);
-- `scripts/contexto_obito.py` (variantes C/CM).
+- `anthropic_transport.py`.
 
 Para bandas sem decisões, `e_unsure` segue a tese (valor inline), diferente do
 notebook tutorial, que usa a taxa do modo.

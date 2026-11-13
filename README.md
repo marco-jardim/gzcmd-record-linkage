@@ -12,9 +12,10 @@ mecanismos implementados:
 
 - **Calibrated**: calibração de probabilidades por Platt (`fit_platt`,
   `fit_anchor_platt`) ou pela calibração sigmoide interna do `GZCMDClassifier`.
-  O pacote não implementa calibração isotônica; a probabilidade isotônica fora
-  da amostra usada na tese foi calculada fora do pacote e passada ao motor de
-  política (`PolicyEngineV3`) na coluna `p_cal`.
+  A probabilidade isotônica fora da amostra (OOF) usada na tese é portada por
+  `gzcmd_record_linkage.oof` (`nested_oof_probabilities`, ver "Filas de
+  contexto (C/CM)") e passada ao motor de política (`PolicyEngineV3`) na coluna
+  `p_cal`; fora desse módulo, o pacote só calibra por Platt (acima).
 - **Mixture-of-experts**: uso livre do termo para a articulação de regras,
   classificador e revisor sob uma política, sem mecanismo aprendido de seleção
   entre especialistas.
@@ -289,8 +290,75 @@ Ressalvas:
   múltiplas comparações; nenhuma fusão é padrão recomendado.
 - A1 e A2 leem os rótulos: servem só para simulação e avaliação. Em operação,
   use `ThompsonQueue` com `update()` à medida que os revisores respondem.
-- O *bootstrap* por `REFREC` (`fusao_robustez.py`) ainda não faz parte do
-  pacote.
+- A robustez por *bootstrap* tem ressalvas próprias (próxima seção).
+
+### Robustez por bootstrap (REFREC)
+
+`gzcmd_record_linkage.robustness` porta `scripts/fusao_robustez.py`.
+`bootstrap_fusion_differences` reamostra os grupos `REFREC` com reposição,
+expande as multiplicidades em cópias contíguas, reordena todas as filas base
+(maior escore primeiro; empate pelo `tie_ids`, ou pela posição se ele for
+omitido, como em `queue()` da tese) e refaz as fusões antes de medir as
+revisões até as metas. A chamada é
+`bootstrap_fusion_differences(scores, labels, groups, *, fusions, comparisons,
+n_boot=2000, seed=20261107, ...)`, com `fusions` um mapa de `FusionSpec`
+determinísticas e `comparisons` uma lista de pares `(fusão, base)`. Devolve um
+`BootstrapResult` com as réplicas (`replicates`), o resumo (`summary`:
+diferença mediana, IC95%, redução percentual e fração de réplicas em que a
+fusão vence), `n_boot`, `n_valid`, `n_excluded` e `seed`. Réplicas sem positivos
+são excluídas e contadas (`n_excluded`); só as fusões determinísticas
+(`interleave` e `rrf`) são aceitas, e as Thompson são recusadas com
+`ValueError`. As metas de cada réplica seguem `replicate_targets` (regra
+híbrida, ver as ressalvas). `subset_effort` mede o esforço
+em um subconjunto (por exemplo, uma faixa de escore), como a tabela por faixa da
+tese.
+
+Ressalvas (tese, `estudo4_gzcmd.tex:225`): o resultado é condicional às
+probabilidades OOF e à referência fixas; não inclui a incerteza do treinamento
+nem o erro da revisão; e a F4 foi escolhida *post hoc*. O intervalo descreve a
+variação entre grupos `REFREC`, não uma garantia sobre dados futuros.
+
+### Filas de contexto (C/CM)
+
+`gzcmd_record_linkage.context` porta as variantes de `scripts/contexto_obito.py`:
+`context_features` deriva os atributos de contexto do grupo `REFREC`/`COMPREC`,
+`context_queues(df, y, ...)` treina e ordena as filas `O3_contexto` (C) e
+`O3_contexto_MACD` (CM) e devolve um `ContextQueues` (`probabilities`, `folds`,
+`orders`, `rows`). `THESIS_CONTEXT_FUSIONS` contém só `F4_contexto` (RRF, k=60,
+de `O1` e `O3_contexto`), aplicada por `context_fusions` sobre as ordens, entre
+as quais a fila `O1` (por escore) é fornecida pelo chamador.
+`gzcmd_record_linkage.oof.nested_oof_probabilities(x, y, ...)` porta
+`gzcmd/ml_oof.py` (probabilidade isotônica OOF aninhada; devolve as
+probabilidades e a dobra externa de cada linha). É um artefato de avaliação
+supervisionado, que usa os rótulos, não um modelo implantável. A ordem das nove
+colunas `macd_*` (`MACD_COLUMNS`) segue a tese (alfabética) e a derivação pelo
+carregador do pacote reproduz a matriz da tese.
+
+Uso **exploratório**, não é padrão: o contexto de `COMPREC` pode cruzar as
+partições de `REFREC` na validação, de modo que o desempenho pode estar
+otimista; nenhuma fila C/CM é recomendada sem avaliação em dados independentes.
+
+## Política NP (Neyman-Pearson)
+
+Alternativa à política de custo, portada de `np_policy.py` e `_triage_np` da
+tese. Seleção: `policy_kind="np"` (argumento de `run_v3`/`build_engine_from_config`
+ou `policy_kind: np` no modo do YAML), apenas no modo `confirmacao`, e apenas
+sob a política v3.1; outros modos recusam NP (`ValueError`). Os limites vêm de
+`NPConstraints` (argumento `np_constraints` de `run_v3`/`build_engine_from_config`
+ou YAML em `np:` do modo): `max_fp_rate_auto=0.002`,
+`max_fp_expected_total=None` (sem limite absoluto) e `max_fn_rate_auto=0.02`
+(limite de `p_cal` para o NONMATCH automático). O motor levanta
+`NPInfeasibleError` quando os MATCH obrigatórios das guardas tornam a restrição
+de falsos positivos inviável (`motivo="guardas_fp"`) ou quando a capacidade de
+revisão humana não cobre os pares pendentes (`motivo="orcamento_humano"`).
+
+Como na tese, o NP é **rebaixado silenciosamente para custo** quando a versão
+efetiva da política é v3 (inclusive o override `policy_version="v3"` sobre um
+YAML v3.1) em `run_v3` e `build_engine_from_config`: nenhum aviso nem erro é
+emitido e a execução usa a política de custo. Já `PolicyEngineV3` construído
+diretamente com `policy_version="v3"` e `policy_kind="np"` levanta `ValueError`.
+Confira a versão efetiva antes de interpretar um resultado como NP.
+`np_evaluation.compare_confirmation` da tese não foi portado.
 
 ## Perfil v3.1 empacotado
 
