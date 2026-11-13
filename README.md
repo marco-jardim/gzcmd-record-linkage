@@ -26,25 +26,29 @@ mecanismos implementados:
 
 ## Versão e escopo
 
-- Distribuição PyPI: `gzcmd-record-linkage==0.4.0`
+- Distribuição PyPI: `gzcmd-record-linkage==0.4.2`
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.4.1** (ainda não publicada)
-- Versão no PyPI: **0.4.0**
+- Versão no repositório: **0.5.0** (ainda não publicada)
+- Versão mais recente no PyPI: **0.4.2** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1 e 0.4.2)
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
 de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo fornece
-0.4.0, com suporte às políticas v3 e v3.1. A paridade da política não inclui
+0.4.2, com suporte às políticas v3 e v3.1. A paridade da política não inclui
 automaticamente os modelos, as probabilidades OOF nem as taxas empíricas dos
 experimentos da tese.
 
 ## Instalação
 
 ```console
-python -m pip install gzcmd-record-linkage==0.4.0
+python -m pip install gzcmd-record-linkage==0.4.2
 ```
+
+A versão 0.5.0 (perfil v3.1 empacotado, `estimated_rates_path` e utilitários de
+fila; ver `CHANGELOG.md`) está apenas no repositório e ainda não foi publicada no
+PyPI; até a publicação, instale-a a partir do código-fonte.
 
 Para desenvolvimento, a partir deste repositório:
 
@@ -202,9 +206,12 @@ mas ele não é chamado automaticamente pelo motor ou pelo runner.
 `rrf` e `interleave` recebem ordens completas de IDs posicionais `0..n-1`;
 para vetores de escores alinhados aos mesmos itens, use `input_kind="scores"`.
 O parâmetro explícito evita confundir escores inteiros com permutações.
-Empates de escores e de RRF seguem a prioridade dos IDs após embaralhamento
-com `seed=42` por padrão, não a ordem original das linhas nem os rótulos.
-A reprodução exige IDs posicionais e sementes iguais. `validate_order(order, n)`
+Desde 0.5.0, o desempate padrão (`tie_break="index"`) segue a regra da tese:
+maior escore primeiro e, nos empates, o menor índice posicional (em
+`review_queue`, o menor `pair_id`); nunca os rótulos. Para o comportamento
+anterior, a permutação aleatória com semente fixa (`seed=42` por padrão), passe
+`tie_break="random"`. A reprodução exige IDs posicionais e, no modo aleatório,
+sementes iguais. `validate_order(order, n)`
 rejeita omissões, duplicações e IDs inválidos.
 
 `ThompsonQueue(ordens, window=200, prior=(1, 1), seed=42)` oferece uma fila
@@ -217,6 +224,50 @@ de ordem, mas cada item só pode ser atualizado uma vez. A classe não lê
 gabaritos nem executa revisão externa. Diferentemente das funções de fusão,
 ela mantém estado local entre chamadas, sem I/O.
 
+## Filas de revisão
+
+Além de `rrf`, `interleave`, `review_queue` e `ThompsonQueue`, o módulo
+`gzcmd_record_linkage.ranking` oferece auxiliares para ordenar e medir filas:
+
+- `order_by_score(escores)`: ordem de IDs posicionais, maior escore primeiro;
+- `top_k_cut(ordem_ou_df, k)`: rotula os `k` primeiros como `examined` e o
+  restante como `not_examined`. Os itens **não examinados** não são decisões de
+  não vínculo e não devem ser registrados como tal;
+- `effort_curve(ordem, y)`, `reviews_to_target(curva, meta)` e
+  `recovered_at_budget(curva, k)`: vínculos recuperados por revisão, revisões
+  necessárias para uma meta e vínculos recuperados com orçamento `k`;
+- `tie_ids`: IDs estáveis (por exemplo, `pair_id`) usados no desempate.
+
+O desempate padrão é a regra da tese (maior escore, depois menor índice ou
+`pair_id`); use `tie_break="random"` para a permutação com semente fixa.
+
+Nenhuma fusão é recomendada como padrão: a tese escolheu a F4 depois de ver os
+resultados (*post hoc*), e as curvas de esforço devem ser avaliadas em dados
+independentes. Ficam no código do chamador as questões operacionais: quem
+revisa, a capacidade por turno, a persistência da fila, a coleta de rótulos para
+`ThompsonQueue.update` e a escolha entre O3, F4 e F3 para cada coorte.
+
+## Perfil v3.1 empacotado
+
+`packaged_config_path("v3.1")` devolve o caminho do perfil v3.1 distribuído com o
+pacote (`gzcmd_v31_config.yaml`); `packaged_config_path("v3")` devolve o perfil
+v3 padrão. Esse perfil declara `llm_review.reliability.estimated_rates_path`,
+apontando para `error_rates_by_band_v4.yaml` (também empacotado, Claude Haiku
+5.5, 1774 e 459 decisões por modo). Com v3.1, as taxas por banda passam a ser as
+medidas, apenas quando a banda tem n >= 10 decisões; caso contrário valem os
+valores fixos inline, incluindo `e_unsure`. A política v3 (padrão) e o override
+histórico `policy_version="v3"` usam sempre as taxas inline e nunca leem esse
+arquivo.
+
+```python
+from gzcmd_record_linkage.config import load_config, packaged_config_path
+
+cfg = load_config(packaged_config_path("v3.1"))
+```
+
+Mudança incompatível em 0.5.0: configurações v3.1 com `estimated_rates_path`
+agora usam as taxas medidas por banda em vez das taxas inline. Consulte
+`docs/PARIDADE_v31.md` e `CHANGELOG.md`.
 ## Linha de comando
 
 A CLI existe na versão 0.3.0 e oferece `run`, `fit-calibration` e `eval`:
@@ -314,7 +365,7 @@ pacote:
 - Versão 3.0.0: [10.5281/zenodo.23928226](https://doi.org/10.5281/zenodo.23928226)
 - DOI conceito: [10.5281/zenodo.18652286](https://doi.org/10.5281/zenodo.18652286)
 
-Ao utilizar o pacote, cite a versão efetivamente usada (0.4.0 publicada ou
+Ao utilizar o pacote, cite a versão efetivamente usada (por exemplo, 0.4.2 publicada, ou
 outra versão identificada, com seu commit quando instalada do repositório) e o
 [repositório de software](https://github.com/marco-jardim/gzcmd-record-linkage).
 Para o método e os experimentos, cite também a tese de Marco Elisio Oliveira

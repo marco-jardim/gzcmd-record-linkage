@@ -69,9 +69,18 @@ def build_engine_from_config(
     if cfg.llm_review.enabled:
         missing: list[str] = []
         llm_error_by_band: dict[str, LLMError] = {}
+        # Measured per-mode rates (estimated_rates_path) are a v3.1-only input.
+        # Any v3 run (legacy override of a v3.1 YAML, or a YAML declaring v3)
+        # keeps the inline priors and never opens the rates file, so v3 output
+        # stays reproducible and independent of that file.
+        band_rates = (
+            cfg.llm_review.error_rates_for_mode(mode)
+            if policy_version == "v3.1"
+            else cfg.llm_review.error_rates_by_band
+        )
         for band_def in cfg.bands.definitions:
             band = band_def.name
-            rates = cfg.llm_review.error_rates_by_band.get(band)
+            rates = band_rates.get(band)
             if rates is None:
                 missing.append(band)
                 continue

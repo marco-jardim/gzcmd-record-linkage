@@ -1,11 +1,13 @@
-# Paridade da política v3.1 no pacote 0.4.0
+# Paridade da política v3.1 no pacote 0.5.0
 
 ## Fonte e escopo
 
 Portabilidade da política Bayesiana de quatro ações do motor de pesquisa
-`D:/git/phd-research/gzcmd/`, consultado em 04/11/2026, HEAD
-`59272a7edeaffb2606bd48e412fb865c708f9020`. Nenhum arquivo-fonte desse repositório
-foi editado para esta portabilidade.
+`D:/git/phd-research/gzcmd/`. A política (motor, guardas, orçamentos) foi
+portada em 0.4.0 a partir do HEAD `59272a7edeaffb2606bd48e412fb865c708f9020`
+(consulta de 04/11/2026). Para a versão 0.5.0 a referência foi atualizada para o
+commit `08befb1` (ramo `pq/slides-defesa-rev2`), consultado em 13/11/2026.
+Nenhum arquivo-fonte desse repositório foi editado para esta portabilidade.
 
 SHA-256 dos arquivos de referência consultados (incluindo finais de linha):
 
@@ -13,12 +15,14 @@ SHA-256 dos arquivos de referência consultados (incluindo finais de linha):
 | :--- | :--- |
 | `gzcmd_v3_policy_engine.py` | `c9a35191db3d4ec689720b3a91722b93f5a65bc8cb8affd9f90dc84e22f4a666` |
 | `guardrails.py` | `c23d5d5dc3087daeca7b5ade3245b57f19b04209b3d75e47d84092ad4210a850` |
+| `reliability.py` (commit `08befb1`) | `EC08FC224D0AD66177135EF1C9BCC115FF9FA86655C90A07AE68DE0515AD6D31` |
+| `error_rates_by_band_v4.yaml` (commit `08befb1`) | `0C48024B94DE9BD2C3299FD0C21640A1E8A7F0733A424C59D6250BA30AE778B1` |
 
 Os contratos foram conferidos em `tests/test_m1_m2_m6.py` da referência e em
 `M1_M2_M6.md`: quatro perdas, prioridade estável por ganho, limites humanos e
 LLM, guardas probabilísticas e preservação histórica. A alternativa NP de
-`test_np_policy.py`, os modelos OOF e o carregamento de taxas empíricas externas
-não integram esta portabilidade. Paridade de política exige as mesmas entradas,
+`test_np_policy.py`, os modelos OOF e o restante da cadeia experimental
+não integram a portabilidade de 0.4.0 (o carregamento de taxas medidas veio em 0.5.0, ver abaixo). Paridade de política exige as mesmas entradas,
 custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 
 ## Mapeamento função a função
@@ -38,6 +42,11 @@ custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 | `runner.build_engine_from_config` | Mesmo nome | Custos, erros, dois orçamentos; v3 explícita em YAML v3.1 restaura custo LLM 0,25 |
 | `runner.run_v3` | Mesmo nome; alias em `runner_api` | Encaminha versão; v3 explícita em YAML v3.1 restaura guardas 10/3; resumo inclui versão e orçamento humano |
 | `cli.build_parser`, `cli.main` | Mesmos nomes | `run --policy-version {v3,v3.1}`; omissão consulta YAML |
+| `reliability.py` (`load_band_rates`) | `reliability.py` | Porte do bloco `claude-haiku-5-5` para prompt v4/dossiê `sem_mo`: taxas medidas só com n >= 10, senão valores inline fixos, incluindo `e_unsure` |
+| `error_rates_by_band_v4.yaml` | `error_rates_by_band_v4.yaml` | Cópia byte a byte (Claude Haiku 5.5; 1774 e 459 decisões), sem cabeçalho; SHA-256 na tabela acima; teste `test_packaged_v4_yaml_is_verbatim_thesis_copy` compara os bytes quando a tese está disponível |
+| `gzcmd_v31_p_config.yaml` | `gzcmd_v31_config.yaml` | Perfil v3.1/P empacotado, acessível por `packaged_config_path("v3.1")`; declara `estimated_rates_path` |
+| `scripts/fusao_filas.py` (desempate de `rrf` e `round_robin`) | `ranking.py` | Desempate padrão da tese: maior escore e, nos empates, menor índice (`review_queue`: menor `pair_id`); `tie_break="random"` preserva a permutação com semente |
+| `runner.build_engine_from_config` (taxas medidas) | Mesmo nome | v3.1 com `estimated_rates_path` usa as taxas medidas (mudança incompatível em 0.5.0); v3 e o override histórico nunca leem o arquivo |
 
 Validação de probabilidades v3.1 antecede o cálculo de perdas no pacote para
 evitar avisos numéricos com infinito; a referência rejeita a mesma entrada no
@@ -57,6 +66,21 @@ Outra diferença intencional é a ordem das colunas: a referência insere
 `loss_match` e `loss_nonmatch` antes de `loss_llm`; o pacote só as acrescenta
 ao entrar na v3.1, após `evr`, preservando as colunas históricas v3. A comparação
 externa alinha as colunas pelo nome antes de conferir os valores.
+
+## Itens da referência não portados
+
+Conferidos na referência `08befb1` e deliberadamente fora do pacote 0.5.0:
+
+- política NP (`np_policy.py` e `_triage_np`);
+- `arranjo_corte.py` (ASR);
+- calibração isotônica OOF;
+- lista de atributos permitidos (*allowlist*) e `--policy-version` do commit
+  `f566368` da tese;
+- `subamostragem.py`;
+- `anthropic_transport.py`.
+
+Para bandas sem decisões, `e_unsure` segue a tese (valor inline), diferente do
+notebook tutorial, que usa a taxa do modo.
 
 ## Bandas, guardas e decisão
 
@@ -90,7 +114,7 @@ O YAML distribuído conserva `llm_review: 0.25` e as taxas fixas da versão 0.3.
 Assim, selecionar v3.1 muda a política, mas não troca silenciosamente custos,
 calibrador ou taxas. O cenário atual da tese usa custo LLM 0,005, humano 1 e
 erros humanos 0,05. Para compará-lo, forneça os mesmos custos e taxas no YAML;
-as taxas externas da referência não são buscadas pelo pacote. A configuração
+as taxas medidas só são lidas quando o YAML v3.1 declara `estimated_rates_path` (perfil `gzcmd_v31_config.yaml`). A configuração
 de abstenção usa `e_unsure` dentro de cada taxa por banda.
 Quando o YAML declara v3.1 e há override explícito para v3, o runner restaura
 custo LLM 0,25 e guardas 10/3, como o `legacy_override` da referência. Esse

@@ -4,10 +4,13 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .reliability import load_band_rates
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,27 @@ class DecisionPolicyConfig:
 class LLMReviewConfig:
     enabled: bool
     error_rates_by_band: dict[str, dict[str, float]]
+    estimated_rates_path: str | None = None
+
+    def error_rates_for_mode(self, mode: str) -> dict[str, dict[str, float]]:
+        """Per-band reviewer rates for ``mode``.
+
+        Without ``estimated_rates_path`` these are the inline
+        ``error_rates_by_band`` values. With it, measured rates are read from
+        that file (thesis semantics, see ``reliability.load_band_rates``) with
+        the inline values as the fixed fallback; every band gets ``e_unsure``.
+        """
+        if self.estimated_rates_path is None:
+            return {
+                band: dict(rates) for band, rates in self.error_rates_by_band.items()
+            }
+        measured = load_band_rates(
+            self.error_rates_by_band, mode=mode, source=self.estimated_rates_path
+        )
+        return {
+            band: {"e_fp": err.e_fp, "e_fn": err.e_fn, "e_unsure": err.e_unsure}
+            for band, err in measured.items()
+        }
 
 
 @dataclass(frozen=True)
@@ -271,7 +295,7 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
     return DecisionPolicyConfig(modes=parsed)
 
 
-def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
+def _load_llm_review(data: Mapping[str, Any], config_dir: Path) -> LLMReviewConfig:
     llm = _as_mapping(data.get("llm_review"), field="llm_review")
     enabled = bool(llm.get("enabled", False))
 
@@ -293,7 +317,12 @@ def _load_llm_review(data: Mapping[str, Any]) -> LLMReviewConfig:
             ):
                 raise ValueError("e_unsure must be a finite probability within [0,1]")
 
-    return LLMReviewConfig(enabled=enabled, error_rates_by_band=rates)
+    # Relative paths resolve against the YAML's directory (as in the thesis).
+    source = reliability.get("estimated_rates_path")
+    source_path = None if source is None else str((config_dir / str(source)).resolve())
+    return LLMReviewConfig(
+        enabled=enabled, error_rates_by_band=rates, estimated_rates_path=source_path
+    )
 
 
 def _load_guardrails_params(data: Mapping[str, Any]) -> GuardrailsParams:
@@ -457,6 +486,28 @@ def _load_monitoring_config(data: Mapping[str, Any]) -> MonitoringConfig:
     )
 
 
+_PACKAGED_CONFIGS = {
+    "v3": "gzcmd_v3_config.yaml",
+    "v3.1": "gzcmd_v31_config.yaml",
+}
+
+
+def packaged_config_path(profile: str = "v3") -> Path:
+    """Path of a config shipped inside the package (``v3`` or ``v3.1``).
+
+    ``v3`` is the default profile used by the CLI; ``v3.1`` is the thesis
+    v3.1/P profile with measured Haiku v4 reviewer rates (additive, opt-in).
+    """
+    try:
+        name = _PACKAGED_CONFIGS[profile]
+    except KeyError:
+        known = ", ".join(sorted(_PACKAGED_CONFIGS))
+        raise ValueError(
+            f"Unknown packaged config profile {profile!r}. Known: {known}"
+        ) from None
+    return Path(str(files("gzcmd_record_linkage") / name))
+
+
 def load_config(path: str | Path) -> GZCMDConfig:
     """Load `gzcmd_v3_config.yaml`-style config into typed dataclasses."""
 
@@ -471,7 +522,7 @@ def load_config(path: str | Path) -> GZCMDConfig:
 
     bands = BandsConfig(definitions=_load_band_definitions(data))
     decision_policy = _load_decision_policy(data)
-    llm_review = _load_llm_review(data)
+    llm_review = _load_llm_review(data, p.parent)
     guardrails = _load_guardrails_params(data)
     calibration = _load_calibration_config(data)
     evaluation = _load_evaluation_defaults(data)

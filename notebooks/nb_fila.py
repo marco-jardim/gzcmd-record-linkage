@@ -49,7 +49,14 @@ from gzcmd_record_linkage.policy_engine import (
     LLMError,
     PolicyEngineV3,
 )
-from gzcmd_record_linkage.ranking import rrf, validate_order
+from gzcmd_record_linkage.ranking import (
+    effort_curve,
+    order_by_score,
+    recovered_at_budget,
+    reviews_to_target,
+    rrf,
+    validate_order,
+)
 
 __all__ = [
     "ACOES_V31",
@@ -401,15 +408,14 @@ def _alinhar(valores: pd.Series | np.ndarray, df: pd.DataFrame) -> np.ndarray:
 def ordem_por_escore(escores: pd.Series | np.ndarray, seed: int = 42) -> np.ndarray:
     """Posições ordenadas do maior para o menor escore.
 
-    Empates são desfeitos por uma permutação aleatória com semente fixa, a mesma
-    regra de ``gzcmd_record_linkage.ranking``; nunca pela ordem das linhas nem
-    pelo rótulo.
+    Empates são desfeitos por uma permutação aleatória com semente fixa
+    (``tie_break="random"`` de ``gzcmd_record_linkage.ranking.order_by_score``);
+    nunca pela ordem das linhas nem pelo rótulo. A tese desempata pela posição
+    (``tie_break="index"``, o padrão do pacote); aqui a regra aleatória fica
+    explícita para que os números do notebook sintético não mudem.
     """
     valores = np.asarray(escores, dtype=float)
-    if not np.isfinite(valores).all():
-        raise ValueError("escores precisam ser finitos")
-    prioridade = np.argsort(np.random.default_rng(seed).permutation(len(valores)))
-    return np.lexsort((prioridade, -valores)).astype(np.int64)
+    return order_by_score(valores, tie_break="random", seed=seed)
 
 
 def ordenacoes(
@@ -437,50 +443,20 @@ def ordenacoes(
         "O3": ordem_por_escore(p, seed),
     }
     ordens["F4"] = rrf(
-        [ordens["O3"], ordens["O1"]], k=k, seed=seed, input_kind="orders"
+        [ordens["O3"], ordens["O1"]],
+        k=k,
+        seed=seed,
+        input_kind="orders",
+        tie_break="random",
     )
     return ordens
 
 
-def curva_esforco(ordem: np.ndarray, y: np.ndarray) -> pd.Series:
-    """Pares verdadeiros recuperados após cada revisão, seguindo ``ordem``.
-
-    ``y`` é posicional (valores maiores que zero contam como par verdadeiro).
-    Supõe revisor perfeito: todo par verdadeiro revisado é recuperado. O índice
-    da Series é o número de revisões (1, 2, ...).
-    """
-    rotulos = np.asarray(y) > 0
-    ordem = np.asarray(ordem)
-    validate_order(ordem, len(rotulos))
-    acumulado = np.cumsum(rotulos[ordem].astype(int))
-    indice = pd.RangeIndex(1, len(rotulos) + 1, name="revisões")
-    return pd.Series(acumulado, index=indice, name="pares verdadeiros recuperados")
-
-
-def revisoes_para_meta(curva: pd.Series | np.ndarray, meta: int) -> int:
-    """Menor número de revisões que recupera ``meta`` pares verdadeiros."""
-    valores = np.asarray(curva)
-    if meta < 1:
-        raise ValueError("a meta precisa ser de pelo menos um par verdadeiro")
-    if len(valores) == 0 or meta > valores[-1]:
-        alcance = int(valores[-1]) if len(valores) else 0
-        raise ValueError(f"meta {meta} inalcançável: a fila recupera {alcance}")
-    return int(np.searchsorted(valores, meta, side="left") + 1)
-
-
-def recuperados_com_carga(curva: pd.Series | np.ndarray, k: int) -> int:
-    """Pares verdadeiros recuperados com ``k`` revisões (k além da fila: todos)."""
-    valores = np.asarray(curva)
-    if k < 0:
-        raise ValueError("a carga não pode ser negativa")
-    if k == 0 or len(valores) == 0:
-        return 0
-    return int(valores[min(k, len(valores)) - 1])
-
-
-# ---------------------------------------------------------------------------
-# Bootstrap agrupado por óbito
-# ---------------------------------------------------------------------------
+# A curva de esforço e suas métricas vivem em ``gzcmd_record_linkage.ranking``
+# (supõem revisor perfeito); os nomes em português são apelidos delas.
+curva_esforco = effort_curve
+revisoes_para_meta = reviews_to_target
+recuperados_com_carga = recovered_at_budget
 
 
 def meta_da_replica(meta: int, total: int, total_replica: int) -> int:

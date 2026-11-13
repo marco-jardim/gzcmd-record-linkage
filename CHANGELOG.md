@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 (2026-11-13, no repositório, ainda não publicada)
+
+Adicionado:
+
+- Perfil v3.1 empacotado `gzcmd_v31_config.yaml` e
+  `packaged_config_path("v3"|"v3.1")`.
+- Suporte a `estimated_rates_path` em `llm_review.reliability`: novo
+  `reliability.py`, portabilidade de `gzcmd/reliability.py` da tese (bloco
+  `claude-haiku-5-5` para o prompt v4/dossiê `sem_mo`; taxas medidas só quando
+  n >= 10, senão os valores fixos inline, incluindo `e_unsure`).
+- `error_rates_by_band_v4.yaml` empacotado (Claude Haiku 5.5; 1774 e 459
+  decisões), cópia byte a byte do arquivo da tese.
+- `ranking`: `order_by_score`, `top_k_cut` (rótulos `examined` e `not_examined`,
+  nunca não vínculo), `effort_curve`, `reviews_to_target`,
+  `recovered_at_budget` e `tie_ids`.
+
+Alterado (**incompatível**):
+
+- O desempate padrão em `rrf`, `interleave` e `order_by_score` passa a ser a
+  regra da tese (maior escore primeiro, depois menor índice) e `review_queue`
+  desempata por `pair_id` crescente. Para o comportamento anterior (permutação
+  aleatória com semente), use `tie_break="random"`.
+- Configurações v3.1 com `estimated_rates_path` passam a usar as taxas medidas
+  por banda, em vez das taxas inline. A política v3 (padrão) não muda e nunca
+  lê esse arquivo.
+- Para bandas sem decisões, `e_unsure` segue a tese (valor inline), diferente do
+  notebook tutorial (taxa do modo).
+
 ## 0.4.2 (2026-11-07)
 
 - Adição de `ranking.py` como utilitário opt-in de ordenação de filas já

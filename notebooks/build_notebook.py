@@ -1007,7 +1007,7 @@ confere("mais de 80% dos potenciais pares têm p abaixo de 10%", no_primeiro_gru
     (
         "md",
         """\
-**Os degraus da calibração isotônica.** A escada isotônica dá o mesmo valor de p a todos os potenciais pares de um degrau. Abaixo do corte, isso cria empates grandes, que a fila desfaz por sorteio com semente fixa. A célula mede esses empates; eles voltam na seção 6.""",
+**Os degraus da calibração isotônica.** A escada isotônica dá o mesmo valor de p a todos os potenciais pares de um degrau. Abaixo do corte, isso cria empates grandes, que o notebook desfaz por sorteio com semente fixa (`tie_break="random"`; o padrão do pacote é a regra da tese). A célula mede esses empates; eles voltam na seção 6.""",
     ),
     (
         "code",
@@ -1147,7 +1147,7 @@ print(f"A, primeiro em O3 e quarto em O1, termina na posição {pos_fusao['A']} 
         """\
 ### 5.2 As quatro filas na *grey area*
 
-A função `ordenacoes` monta as quatro filas sobre os potenciais pares abaixo do corte. Os empates, comuns na nota final e nos degraus da probabilidade, são desfeitos por sorteio com semente fixa, nunca pela ordem das linhas nem pela classe. A célula conta quantos PAR = 2 cada fila põe entre os primeiros 10, 50, 100 e 500 potenciais pares e diz qual fila lidera com 10 e com 100 revisões.""",
+A função `ordenacoes` monta as quatro filas sobre os potenciais pares abaixo do corte. Os empates, comuns na nota final e nos degraus da probabilidade, são desfeitos, neste notebook, por sorteio com semente fixa (`tie_break="random"`, passado explicitamente; o padrão do pacote é a regra da tese), nunca pela ordem das linhas nem pela classe. A célula conta quantos PAR = 2 cada fila põe entre os primeiros 10, 50, 100 e 500 potenciais pares e diz qual fila lidera com 10 e com 100 revisões.""",
     ),
     (
         "code",
@@ -1692,7 +1692,7 @@ Em termos deste notebook, o fluxo é:
 4. medir a incerteza com o *bootstrap* agrupado por óbito (seção 7);
 5. se houver LLM, usá-lo só como apoio: o `MATCH` dele segue ao revisor humano (seção 8).
 
-**Onde está cada peça.** Neste notebook, as funções vêm de `nb_fila.py`, na pasta `notebooks/`, fora do pacote publicado: `prob_calibrada_oof`, `ordenacoes`, `curva_esforco`, `revisoes_para_meta`, `bootstrap_diferenca`, `politica_v31` e `mesma_carga`. No pacote `gzcmd_record_linkage`, a fusão está em `gzcmd_record_linkage.ranking`: `rrf` e `review_queue(df, scores=[...], method="rrf")`, que ordena uma fila já selecionada abaixo do corte pelas colunas indicadas (maior primeiro). Nos dois, os empates são desfeitos por uma permutação aleatória com semente fixa sobre a posição das linhas, nunca pela classe: mudar a semente ou a ordem das linhas muda a ordem dentro dos empates e, com ela, o número de revisões, sobretudo na recuperação integral.
+**Onde está cada peça.** Neste notebook, as funções vêm de `nb_fila.py`, na pasta `notebooks/`, fora do pacote publicado: `prob_calibrada_oof`, `ordenacoes`, `curva_esforco`, `revisoes_para_meta`, `bootstrap_diferenca`, `politica_v31` e `mesma_carga`. No pacote `gzcmd_record_linkage`, a fusão está em `gzcmd_record_linkage.ranking`: `rrf` e `review_queue(df, scores=[...], method="rrf")`, que ordena uma fila já selecionada abaixo do corte pelas colunas indicadas (maior primeiro). O padrão do pacote para os empates é a regra da tese (maior escore primeiro, depois a menor posição; em `review_queue`, o menor `pair_id`). Este notebook passa `tie_break="random"` explicitamente e desfaz os empates por uma permutação aleatória com semente fixa sobre a posição das linhas, nunca pela classe: mudar a semente ou a ordem das linhas muda a ordem dentro dos empates e, com ela, o número de revisões, sobretudo na recuperação integral.
 
 **Consequência para a vigilância.** Os potenciais pares abaixo do ponto de parada não foram examinados e devem ser registrados como não examinados, não como não pares: na vigilância do óbito, a ausência de vínculo por esgotamento do orçamento não equivale a óbito não notificado (`sec:concl-recomendacoes`).""",
     ),
