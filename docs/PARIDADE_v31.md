@@ -1,12 +1,13 @@
-# Paridade da política v3.1 no pacote 0.5.0
+# Paridade da política v3.1 no pacote 0.6.0
 
 ## Fonte e escopo
 
 Portabilidade da política Bayesiana de quatro ações do motor de pesquisa
 `D:/git/phd-research/gzcmd/`. A política (motor, guardas, orçamentos) foi
 portada em 0.4.0 a partir do HEAD `59272a7edeaffb2606bd48e412fb865c708f9020`
-(consulta de 04/11/2026). Para a versão 0.5.0 a referência foi atualizada para o
-commit `08befb1` (ramo `pq/slides-defesa-rev2`), consultado em 13/11/2026.
+(consulta de 04/11/2026). Para as versões 0.5.0 e 0.6.0 a referência foi atualizada
+para o commit `08befb1` da tese (ramo `pq/slides-defesa-rev2`), consultado em
+13/11/2026.
 Nenhum arquivo-fonte desse repositório foi editado para esta portabilidade.
 
 SHA-256 dos arquivos de referência consultados (incluindo finais de linha):
@@ -23,7 +24,8 @@ Os contratos foram conferidos em `tests/test_m1_m2_m6.py` da referência e em
 LLM, guardas probabilísticas e preservação histórica. A alternativa NP de
 `test_np_policy.py`, os modelos OOF e o restante da cadeia experimental
 não integram a portabilidade de 0.4.0 (NP, OOF, *bootstrap* e C/CM foram portados
-depois, ver o mapeamento) (o carregamento de taxas medidas veio em 0.5.0, ver abaixo). Paridade de política exige as mesmas entradas,
+depois, ver o mapeamento; o carregamento de taxas medidas veio em 0.5.0 e a
+avaliação NP, o ASR, a subamostragem, o transporte Anthropic e a rota `ml_xgb` em 0.6.0, ver abaixo). Paridade de política exige as mesmas entradas,
 custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 
 ## Mapeamento função a função
@@ -57,6 +59,20 @@ custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 | `np_policy.py`; `PolicyEngineV3._triage_np`; configuração NP | `np_policy.py` (`NPConstraints`, `NPInfeasibleError`); `gzcmd_v3_policy_engine.py`; `config.py`; `runner.py` | `policy_kind="np"`, só `confirmacao`, só v3.1; padrões 0,002 / sem limite absoluto / 0,02; sob a v3, via `run_v3`/`build_engine_from_config`, o NP é rebaixado silenciosamente para custo, como na tese (o motor construído direto levanta `ValueError`) |
 | `scripts/contexto_obito.py` | `context.py` (`context_features`, `context_queues`, `THESIS_CONTEXT_FUSIONS`, `MACD_COLUMNS`) | Paridade exata dos atributos e das matrizes C/CM sobre a base real (`tests/test_context.py`, que inclui a derivação MACD pelo carregador do pacote; testes de paridade ignorados se `D:\git\phd-research` não estiver presente); colunas MACD na ordem da tese |
 | `gzcmd/ml_oof.py` | `oof.py` (`nested_oof_probabilities`) | Isotônica OOF aninhada; paridade testada contra a tese (`tests/test_oof.py`; ignorada se `D:\git\phd-research` não estiver presente) |
+| `np_evaluation.evaluate_np_point`, `compare_confirmation` | `np_evaluation.py` (`evaluate_np_point`, `compare_confirmation`, `NP_RATES`) | Motor v3.1 construído direto, com `rates`, erro humano e orçamento injetados; restrição inviável gera linha `viavel=False` com os diagnósticos, sem métricas fabricadas; paridade testada contra a tese (`tests/test_np_evaluation.py`, parte ignorada sem a tese) |
+| Métricas esperadas do funil (`np_evaluation`/scripts) | `cost_evaluation.expected_funnel_metrics` | Expectativas prospectivas sobre as taxas dos revisores; nunca substitui respostas simuladas de LLM |
+| `wilson95` | `intervals.wilson95` | Intervalo de Wilson a 95% |
+| Hash normalizado de arquivos (proveniência) | `provenance.sha256_normalized`, `sha256_file_normalized` | SHA-256 independente de final de linha |
+| `guardrails.strong_birth_conflict`, `high_guard_birth_variant` | Mesmos nomes em `guardrails.py` | Variantes só de avaliação; `apply_guardrails` não muda |
+| `gzcmd/arranjo_corte.py` (partes genéricas) | `arranjo_corte.py` (`below_cutoff`, `LogitPlatt`, `nested_cutoff_probabilities`, `estimate_rates`, `crossfit_rates`, `cache_matches`, `summarize_actions`, `THESIS_*`) | ASR: mantém o corte do OpenRecLink; braço principal `P` (isotônica abaixo do corte); `P-Platt` é sensibilidade; checagem da partição opcional via `expected`; estimador M3 |
+| `gzcmd/arranjo_robustez.py` (partes genéricas) | `arranjo_robustez.py` (`grid`, `replica_factory`, `run_replica`, `dominates`, `classify`, `action_stability`, `safety_stop`, `atomic_json`, `checkpoint_matches`, `clopper_pearson`) | Mesmos critérios da tese; `safety_stop` totalmente parametrizado (sem valores monetários ou de tempo embutidos) |
+| `gzcmd/ml_oof.py` (`numeric_features`, `make_pair_id`, `fit_xgb_oof`) | `oof.py` (`numeric_features`, `pair_ids`, `fit_xgb_oof`) | Tabela OOF XGBoost + isotônica aninhada, com impressão digital (CSV, método, semente, dobras, `split_by`, parâmetros, versões) e reuso validado |
+| `runner` da tese (`p_cal` `ml_xgb`) | `runner.run_v3` (`p_cal="ml_xgb"`, `ml_oof_path`, `reuse_ml_oof`, `split_by`, `rates_yaml`); `config.CALIBRATION_ROUTES`, `CalibrationConfig.p_cal` | `p_cal="config"` honra `calibration.p_cal` e depois `method`; com o perfil v3.1 empacotado seleciona `ml_xgb` (mudança de comportamento em 0.6.0) |
+| `gzcmd/subamostragem.py` (partes genéricas) | `subamostragem.py` (`sample_training_indices`, `correct_prior`, `undersampled_oof`, `evaluate`, `summarize`, `THESIS_*`) | Subamostragem só no treino e correção de prior de Dal Pozzolo et al. (2015), eq. 9; as escolhas do estudo viram parâmetros com padrões da tese |
+| `gzcmd/anthropic_transport.py` | `anthropic_transport.py` (`AnthropicReviewer`, `caching_metadata`); extra `[anthropic]` | Mensagens e protocolo de `LLMReviewer`, prefixo do prompt em `cache_control: ephemeral`, sem `temperature`; `from_env` (`ANTHROPIC_API_KEY`) não existe na tese |
+| Prompt v4 e dossiê `sem_mo` | `llm_review` (`prompt_version="v3"\|"v4"`, `gzcmd_v4_llm_prompt.md`); `llm_dossier.DossierView(dossier, remove_model_outputs)` | `DossierView` remove o grupo `model_outputs` e preserva o resto byte a byte |
+| Lista de atributos permitidos (commit `f566368` da tese) | `classifier.COMPARATOR_FEATURES`, `FeatureSet`, `feature_set`, `macd_enabled`; `eval --feature-allowlist` | 30 atributos do comparador mais `macd_*` quando habilitado; padrão `historical` inalterado |
+| `eval --policy-version` | `eval.py` e `cli.py` (`--policy-version {v3,v3.1}`) | Sem a opção, o `eval` conserva o comportamento v3 da biblioteca (ver desvios) |
 
 Reprodução com dados completos das filas de contexto (reportada pelo porte;
 reproduzido em 13/11/2026, script ad hoc, não é teste): C 20/75/9.801, CM
@@ -81,17 +97,32 @@ Outra diferença intencional é a ordem das colunas: a referência insere
 ao entrar na v3.1, após `evr`, preservando as colunas históricas v3. A comparação
 externa alinha as colunas pelo nome antes de conferir os valores.
 
-## Itens da referência não portados
+## Fora do pacote por decisão
 
-Conferidos na referência `08befb1` e deliberadamente fora do pacote 0.5.0:
+Conferidos na referência `08befb1` (consultada em 13/11/2026) e deliberadamente
+fora do pacote 0.6.0:
 
-- `np_evaluation.compare_confirmation` (a política NP em si foi
-  portada, ver o mapeamento);
-- `arranjo_corte.py` (ASR);
-- lista de atributos permitidos (*allowlist*) e `--policy-version` do commit
-  `f566368` da tese;
-- `subamostragem.py`;
-- `anthropic_transport.py`.
+- `final_funnel.write_final_funnel`: importa scripts e dados da tese.
+- `artifacts.py`: artefatos específicos da tese.
+- `escore_programado.py`: o próprio docstring diz que não faz parte do motor.
+- `llm_usage_cost.py`: tarifas fixas no código.
+- `arranjo_robustez.verify_prereg`: fixa scikit-learn 1.8.0, xgboost 3.2.0 e
+  hashes de arquivos da tese.
+- `arranjo_corte.pending_cost`: contagens de tokens e preços fixos.
+- `resolve_input`: caminhos da tese.
+- `np_evaluation.evaluate_birth_variant`: desfechos da tese fixos no código.
+- A proibição da Fireworks na tese: política do projeto, não do método.
+- `scripts/*` da tese: scripts de pesquisa.
+
+## Desvios cosméticos e de comportamento conhecidos
+
+- A ordem das colunas da triagem difere da tese, com valores idênticos (a
+  comparação alinha as colunas pelo nome).
+- Sob a v3, o NP é rebaixado para custo em `run_v3`/`build_engine_from_config`,
+  como na tese.
+- `eval` sem `--policy-version` conserva o comportamento v3 anterior da
+  biblioteca em vez de seguir o YAML (desvio deliberado da tese).
+- `p_cal="config"` com o perfil v3.1 empacotado seleciona `ml_xgb`.
 
 Para bandas sem decisões, `e_unsure` segue a tese (valor inline), diferente do
 notebook tutorial, que usa a taxa do modo.
@@ -137,8 +168,10 @@ declara v3 conserva seus custos e guardas configurados.
 
 O runner mantém seus métodos de calibração anteriores. Treinar Platt na entrada
 não constitui avaliação independente, embora seja mantido para reproduzir o
-perfil histórico. Esta entrega não porta o treinamento OOF aninhado. `eval`
-continua explicitamente v3 porque suas métricas esperadas têm três ações.
+perfil histórico. O treinamento OOF aninhado está disponível na rota `ml_xgb` de
+`run_v3` (`oof.fit_xgb_oof`), que usa rótulos e é um artefato de avaliação. `eval`
+continua v3 por padrão porque suas métricas esperadas têm três ações; com
+`--policy-version` explícito, ações fora das três históricas contam como indecisas.
 
 ## Evidência reproduzível
 

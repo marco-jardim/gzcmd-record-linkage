@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gzcmd-record-linkage"
-version = "0.5.0"
+version = "0.6.0"
 description = "Deterministic policy engine for clerical review linkage decision support"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = [
+  "anthropic>=0.40",
+]
 dev = [
   "ruff>=0.6",
   "pytest>=8.0",
@@ -48,6 +51,7 @@ include = [
   "src/gzcmd_record_linkage/gzcmd_v31_config.yaml",
   "src/gzcmd_record_linkage/error_rates_by_band_v4.yaml",
   "src/gzcmd_record_linkage/gzcmd_v3_llm_prompt.md",
+  "src/gzcmd_record_linkage/gzcmd_v4_llm_prompt.md",
   "src/gzcmd_record_linkage/gzcmd_v3_llm_output.schema.json",
 ]
 

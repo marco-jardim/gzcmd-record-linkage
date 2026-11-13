@@ -1,6 +1,78 @@
 # Changelog
 
-## Não publicado
+## 0.6.0 (2026-11-13, no repositório, ainda não publicada)
+
+A 0.5.0 nunca foi publicada no PyPI (a última publicada é a 0.4.2): esta versão
+inclui tudo o que está descrito abaixo e na seção 0.5.0.
+
+Alterado (**incompatível**):
+
+- `run_v3(p_cal="config")` (e `gzcmd run --p-cal config`) passa a ler
+  `calibration.p_cal` do YAML quando declarado e só depois `calibration.method`.
+  O perfil v3.1 empacotado declara `p_cal: ml_xgb`, logo `p_cal="config"` com ele
+  agora seleciona `ml_xgb` (antes: `anchor_platt`). O perfil v3 não muda.
+- `calibration.p_cal` do YAML é validado contra `CALIBRATION_ROUTES`; valor
+  desconhecido levanta `ValueError` ao carregar a configuração.
+
+Adicionado:
+
+- `np_evaluation.py` (`evaluate_np_point`, `compare_confirmation`, `NP_RATES`):
+  avaliação NP da tese para `confirmacao` (política de custo e NP com alfa
+  0,001, 0,002 e 0,01). Restrição inviável gera linha com `viavel=False` e os
+  diagnósticos do `NPInfeasibleError`; nenhuma métrica é fabricada.
+  `evaluate_birth_variant` não foi portado.
+- `cost_evaluation.py` (`expected_funnel_metrics`): métricas esperadas do funil
+  sobre as taxas dos revisores, sem respostas simuladas de LLM.
+- `intervals.wilson95` e `provenance.py` (`sha256_normalized`,
+  `sha256_file_normalized`, hash independente de final de linha).
+- `guardrails.strong_birth_conflict` e `guardrails.high_guard_birth_variant`,
+  variantes só de avaliação; `apply_guardrails` não as usa.
+- `arranjo_corte.py`: arranjo sequencial (ASR) que mantém o corte do
+  OpenRecLink (`below_cutoff`, `LogitPlatt`, `nested_cutoff_probabilities`,
+  `estimate_rates`, `crossfit_rates`, `cache_matches`, `summarize_actions`,
+  constantes `THESIS_*`). P-Platt é análise de sensibilidade; a checagem da
+  partição da tese é opcional (`expected`).
+- `arranjo_robustez.py`: grade de réplicas, `dominates`, `classify`,
+  `action_stability`, `safety_stop` parametrizado, utilitários de *checkpoint*.
+- `anthropic_transport.py` (`AnthropicReviewer`, `caching_metadata`) e extra
+  `[anthropic]`: transporte da API Messages com prefixo do prompt em cache;
+  `AnthropicReviewer.from_env` lê `ANTHROPIC_API_KEY`.
+- `llm_review`: `prompt_version` (`"v3"` padrão, `"v4"`) em `LLMReviewer` e nos
+  construtores de mensagens; prompt empacotado `gzcmd_v4_llm_prompt.md`.
+- `llm_dossier.DossierView` (`remove_model_outputs`): dossiê `sem_mo` da tese;
+  `Dossier` e `SCHEMA_VERSION` inalterados.
+- `subamostragem.py`: subamostragem de negativos só no treinamento, com a
+  correção de prior de Dal Pozzolo (`sample_training_indices`, `correct_prior`,
+  `undersampled_oof`, `evaluate`, `summarize`); exploratório e *post hoc*.
+- `oof.py`: `numeric_features`, `pair_ids` e `fit_xgb_oof` (XGBoost + isotônica
+  aninhados, com tabela persistida, impressão digital e reuso validado).
+- `runner.run_v3`: rota `p_cal="ml_xgb"` e argumentos `ml_oof_path`,
+  `reuse_ml_oof`, `split_by` e `rates_yaml`; `build_engine_from_config` aceita
+  `rates_yaml`. CLI: `run --p-cal {ml_xgb,platt,anchor_platt,config}`,
+  `--ml-oof-path`, `--reuse-ml-oof`, `--rates-yaml`.
+- `classifier`: `FeatureSet`, `COMPARATOR_FEATURES` (30 atributos),
+  `feature_set` e `macd_enabled` em `get_feature_columns` e `GZCMDClassifier`
+  (modelos salvos antes usam a seleção histórica). `eval` e a CLI:
+  `--feature-allowlist` e `--policy-version {v3,v3.1}`.
+- `config.CALIBRATION_ROUTES` e `CalibrationConfig.p_cal`;
+  `LLMReviewConfig.error_rates_for_mode(mode, source=None)`.
+
+Alterado:
+
+- `eval` sem `--policy-version` mantém o comportamento v3 anterior da
+  biblioteca (desvio deliberado da tese, que segue o YAML); com `v3` sobre YAML
+  v3.1 restaura as guardas 10/3.
+- `guardrails.py`: apenas reformatação de linhas longas, sem mudança de
+  comportamento.
+
+Corrigido:
+
+- Mensagem de erro de `p_cal` inválido em `run_v3` passa a listar `ml_xgb`.
+
+Ver `docs/PARIDADE_v31.md` para o que ficou fora do pacote por decisão.
+
+Da rodada anterior (fusões, NP, *bootstrap* e filas de contexto; antes sob
+"Não publicado"):
 
 Adicionado:
 

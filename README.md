@@ -31,8 +31,9 @@ mecanismos implementados:
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.5.0** (ainda não publicada)
-- Versão mais recente no PyPI: **0.4.2** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1 e 0.4.2)
+- Versão no repositório: **0.6.0** (ainda não publicada)
+- Versão mais recente no PyPI: **0.4.2** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1 e 0.4.2;
+  a 0.5.0 nunca foi publicada e seu conteúdo está incluído na 0.6.0)
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
@@ -47,9 +48,18 @@ experimentos da tese.
 python -m pip install gzcmd-record-linkage==0.4.2
 ```
 
-A versão 0.5.0 (perfil v3.1 empacotado, `estimated_rates_path` e utilitários de
-fila; ver `CHANGELOG.md`) está apenas no repositório e ainda não foi publicada no
-PyPI; até a publicação, instale-a a partir do código-fonte.
+A versão 0.6.0 (perfil v3.1 empacotado, `estimated_rates_path`, utilitários de
+fila, avaliação NP, arranjo sequencial, transporte Anthropic e rota `ml_xgb`; ver
+`CHANGELOG.md`) está apenas no repositório e ainda não foi publicada no PyPI. A
+0.5.0 nunca foi publicada. Até a publicação, instale a 0.6.0 a partir do
+código-fonte.
+
+O transporte Anthropic (`AnthropicReviewer`) usa a dependência opcional
+`anthropic`, importada apenas quando o primeiro pedido é feito:
+
+```console
+python -m pip install -e ".[anthropic]"
+```
 
 Para desenvolvimento, a partir deste repositório:
 
@@ -358,7 +368,124 @@ YAML v3.1) em `run_v3` e `build_engine_from_config`: nenhum aviso nem erro é
 emitido e a execução usa a política de custo. Já `PolicyEngineV3` construído
 diretamente com `policy_version="v3"` e `policy_kind="np"` levanta `ValueError`.
 Confira a versão efetiva antes de interpretar um resultado como NP.
-`np_evaluation.compare_confirmation` da tese não foi portado.
+
+### Avaliação NP: `compare_confirmation`
+
+`np_evaluation.compare_confirmation(frame, cfg, rates_path)` compara, sobre um
+quadro já com `band`, `p_cal`, notas e rótulo (`TARGET` ou `y`), a política de
+custo (no alfa configurado) e a NP com alfa 0,001, 0,002 e 0,01, no modo
+`confirmacao`, com as taxas lidas de `rates_path`. Cada linha vem de
+`evaluate_np_point`, que constrói o motor v3.1 diretamente e **nunca fabrica
+métricas**: se a restrição NP é inviável, a linha traz `viavel=False`, o
+`status="inviavel"` e os diagnósticos de `NPInfeasibleError`. As métricas
+esperadas do funil vêm de `cost_evaluation.expected_funnel_metrics`; são
+expectativas prospectivas sobre as taxas de erro dos revisores (hipóteses), não
+respostas simuladas de LLM. O quadro de entrada precisa dos rótulos, logo é uma
+avaliação, não uma operação. `intervals.wilson95` e
+`provenance.sha256_normalized`/`sha256_file_normalized` (hash independente de
+final de linha) são utilitários auxiliares. Em `guardrails`, `strong_birth_conflict`
+e `high_guard_birth_variant` são variantes **somente de avaliação**; a política
+não as usa. A variante `evaluate_birth_variant` da tese não foi portada.
+
+### Arranjo sequencial (ASR)
+
+`arranjo_corte` porta as partes genéricas do arranjo sequencial da tese: mantém
+o **corte do OpenRecLink** (pares com `SCORE` igual ou acima do corte de cada
+`PASSO` seguem aceitos como o OpenRecLink decidiu) e decide os pares potenciais
+**abaixo** do corte com a política v3.1 de quatro ações sobre uma probabilidade
+recalibrada só nesses pares (isotônica; braço principal `P`).
+`below_cutoff(raw, cutoffs, expected=...)` devolve a máscara abaixo do corte;
+`nested_cutoff_probabilities(x, y, below, groups, ...)` produz as probabilidades
+OOF por REFREC dos braços `P`, `B1` e, como sensibilidade, `P-Platt` e `A3`;
+`estimate_rates` e `crossfit_rates` estimam as taxas dos revisores (estimador M3:
+`UNSURE` é marginal e nunca conta como FP ou FN); `cache_matches` exige a
+identidade completa (modo, modelo, hash do prompt e do dossiê, campos removidos).
+`arranjo_robustez` oferece a grade de réplicas (`grid`, `replica_factory`,
+`run_replica`), `dominates`, `classify`, `action_stability`, `safety_stop` e
+utilitários de *checkpoint* (`atomic_json`, `checkpoint_matches`).
+
+Ressalvas: é um artefato de avaliação supervisionado (os rótulos treinam o
+classificador e os calibradores), validado por REFREC, não um modelo
+implantável. **P-Platt é uma análise de sensibilidade**, não o braço principal.
+A checagem da partição da tese (211 aceitos, 61.485 abaixo do corte e 36 pares
+`PAR == 2` abaixo) é **opcional**: `below_cutoff` só a aplica quando se passa
+`expected=...` (use `THESIS_PARTITION` para reproduzi-la). Ficam de fora do pacote
+`pending_cost` e `verify_prereg` (ver `docs/PARIDADE_v31.md`).
+
+### Subamostragem com correção de Dal Pozzolo
+
+`subamostragem` porta a subamostragem de negativos **só no treinamento** em torno
+do OOF aninhado (exploratório, *post hoc*): `sample_training_indices` mantém todos
+os positivos e amostra até `ratio` negativos por positivo e devolve `beta`, a
+fração de negativos retida; `correct_prior` aplica a correção de prior de Dal
+Pozzolo et al. (2015), eq. (9); `undersampled_oof` devolve as probabilidades
+`isotonic`, `isotonic_prior`, `raw` e `raw_prior` (os conjuntos de predição
+interna, os rótulos de calibração e a avaliação externa mantêm a prevalência
+real); `evaluate` e `summarize` agregam métricas (AUC, AUC-PR, Brier, ECE por
+quantis, curva de recuperação) com os parâmetros da tese como padrões `THESIS_*`.
+A correção de prior pressupõe probabilidades sob o prior amostrado; aplicada
+depois de uma isotônica ajustada com prevalência real, é só um diagnóstico de
+dupla correção.
+
+### Revisão com Claude (transporte Anthropic, prompt v4)
+
+`AnthropicReviewer` (extra `[anthropic]`) usa a API Messages da Anthropic com o
+prefixo invariante do prompt marcado com `cache_control: ephemeral`
+(`caching_metadata()` descreve os pontos de cache). Para reproduzir as execuções
+Haiku da tese (instruções v4, dossiê sem as saídas do modelo, `max_tokens=2500`,
+sem `temperature`):
+
+```python
+from gzcmd_record_linkage.anthropic_transport import AnthropicReviewer
+from gzcmd_record_linkage.llm_dossier import DossierView, build_dossier
+
+revisor = AnthropicReviewer.from_env(prompt_version="v4")  # lê ANTHROPIC_API_KEY
+resultado = revisor.review(DossierView(build_dossier(linha), True))
+```
+
+`from_env` não existe na tese (lá a variável é lida pelos scripts) e levanta
+`OSError` sem `ANTHROPIC_API_KEY`. O padrão é `claude-haiku-5-5`, sem nenhum
+parâmetro de amostragem; o cliente é criado só no primeiro pedido, e o texto do
+provedor nunca é registrado. `prompt_version` (`"v3"` padrão, `"v4"`) vale também
+para `LLMReviewer`; `DossierView(dossie, True)` (`remove_model_outputs`) remove o
+grupo `model_outputs` (`p_cal`, `band`, `base_choice`, `evr`, `guardrail`,
+`guardrail_reason`) e preserva o restante. As taxas por banda de
+`error_rates_by_band_v4.yaml` valem para essa combinação (prompt v4 e dossiê
+`sem_mo`); não as aplique a outra configuração. O pacote não embute tarifas nem
+limites de custo; `AnthropicReviewer` lê também um `.env`, se `python-dotenv`
+estiver instalado.
+
+### Rota `ml_xgb` de `p_cal` e atributos permitidos
+
+`run_v3(..., p_cal="ml_xgb")` (CLI: `--p-cal ml_xgb`) calcula `p_cal` pelo
+XGBoost aninhado fora da dobra com isotônica (`oof.fit_xgb_oof`), associado às
+linhas por `pair_id`. É um artefato de avaliação que **usa os rótulos** (`PAR`),
+não uma probabilidade implantável. `split_by` (`row`, `refrec`, `comprec`) assume
+`evaluation.split_by` do YAML. A tabela OOF só é gravada se `ml_oof_path`
+(`--ml-oof-path`) for informado, com um `.json` ao lado com a impressão digital;
+`reuse_ml_oof=True` (`--reuse-ml-oof`) exige `ml_oof_path` e só reaproveita a
+tabela se a impressão digital (SHA-256 dos bytes do CSV, método, semente, dobras,
+`split_by`, parâmetros efetivos do XGBoost e versões de scikit-learn e xgboost) e
+o hash e o número de linhas da tabela coincidirem; caso contrário, recalcula e
+sobrescreve. `rates_yaml` (`--rates-yaml`) substitui o arquivo de taxas medidas
+(só tem efeito na v3.1).
+
+**Mudança de comportamento:** `p_cal="config"` agora lê `calibration.p_cal` do
+YAML quando existe e só depois `calibration.method`. O perfil v3.1 empacotado
+declara `p_cal: ml_xgb`; portanto `run_v3(..., p_cal="config")` com esse YAML passa
+a selecionar `ml_xgb` (antes usava `anchor_platt`). O perfil v3 não declara
+`p_cal` e segue com `calibration.method`.
+
+No classificador, `feature_set="historical"` (padrão) mantém todas as colunas
+numéricas que não são metadados, e `feature_set="allowlist"` restringe às 30
+`COMPARATOR_FEATURES` mais, se `macd_enabled`, as colunas `macd_*` numéricas
+(sem campos brutos, identificadores nem `SCORE`). Na CLI, `gzcmd eval
+--feature-allowlist` ativa a lista e `gzcmd eval --policy-version {v3,v3.1}`
+força a política. **Desvio deliberado da tese:** sem `--policy-version`, o `eval`
+conserva o comportamento v3 anterior da biblioteca (avaliação histórica de três
+ações) em vez de seguir `guardrails.policy_version` do YAML. Com `v3` sobre YAML
+v3.1, restaura as guardas 10/3; ações diferentes de `MATCH`, `NONMATCH` e
+`LLM_REVIEW` contam como indecisas nas métricas.
 
 ## Perfil v3.1 empacotado
 
