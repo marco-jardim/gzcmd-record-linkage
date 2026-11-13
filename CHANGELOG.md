@@ -1,5 +1,17 @@
 # Changelog
 
+## Não publicado
+
+Adicionado:
+
+- `fusion.py`: fusões de filas da tese com paridade exata de
+  `scripts/fusao_filas.py`. `FusionSpec`, `THESIS_FUSIONS` (F1-F4, A1, A2),
+  `fuse`, `simulate_thompson` (simulação em lote com rótulos, sobre
+  `ThompsonQueue`), `queue_metrics` (revisões até a meta, recuperação em `k`,
+  AUC de recuperação) e `compare_queues` (média e P10/P90 das fusões
+  adaptativas sobre sementes). Nenhuma fusão é padrão recomendado: a F4 foi
+  escolhida *post hoc*. Nenhuma alteração em `ranking.py`.
+
 ## 0.5.0 (2026-11-13, no repositório, ainda não publicada)
 
 Adicionado:

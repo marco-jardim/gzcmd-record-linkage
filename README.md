@@ -247,6 +247,51 @@ independentes. Ficam no código do chamador as questões operacionais: quem
 revisa, a capacidade por turno, a persistência da fila, a coleta de rótulos para
 `ThompsonQueue.update` e a escolha entre O3, F4 e F3 para cada coorte.
 
+### Fusão de filas
+
+O módulo `gzcmd_record_linkage.fusion` reproduz, com paridade exata, as fusões
+da tese (`scripts/fusao_filas.py`): `THESIS_FUSIONS` (somente leitura) define
+F1/F2 (intercalação), F3/F4 (RRF, `k=60`) e A1/A2 (Thompson com
+`Beta(1, 1)`, janela de 200 revisões ou sem janela). A ordem dos braços é a
+ordem de desempate e foi copiada da tese. `fuse` monta uma fila fundida,
+`simulate_thompson` repete uma fila Thompson sobre rótulos conhecidos,
+`queue_metrics` mede uma fila e `compare_queues` devolve uma linha por fila base
+e por fusão.
+
+```python
+from gzcmd_record_linkage.fusion import THESIS_FUSIONS, compare_queues, fuse
+from gzcmd_record_linkage.llm_dossier import make_pair_id
+
+# Ordens completas de IDs posicionais 0..n-1 (melhor primeiro), uma por fila.
+filas = {"O1": ordem_o1, "O3": ordem_o3, "O3_MACD": ordem_macd}
+# Desempate da tese: hash do par crescente (SHA-256 de COMPREC|REFREC|PASSO).
+tie_ids = [make_pair_id(c, r, p) for c, r, p in zip(comprec, refrec, passo)]
+
+fila_f4 = fuse(filas, THESIS_FUSIONS["F4"], tie_ids=tie_ids)
+tabela = compare_queues(
+    filas, rotulos, targets=(9, 23, 36), top_k=(125, 3040),
+    auc_horizon=3040, tie_ids=tie_ids,
+)
+```
+
+`compare_queues` calcula uma vez as fusões determinísticas; A1 e A2 rodam uma
+simulação por semente (`adaptive_seeds`, padrão `0..199`) e informam média e
+P10/P90 (quantil linear) de cada métrica, não as métricas de uma curva média.
+Colunas: `queue`, `kind`, `method`, `runs` e, para cada métrica
+(`reviews_to_<meta>`, `recovered_at_<k>`, `auc_recovery`), a média em `<métrica>`
+e `<métrica>_p10`/`<métrica>_p90` (iguais à média quando há uma só execução).
+Uma meta inalcançável vale `None` (NaN na tabela). `auc_recovery` é a integral
+em degraus de `C(k)/total` para `k=0..H-1`, com `C(0)=0`.
+
+Ressalvas:
+
+- A F4 foi escolhida *post hoc* entre seis variantes, sem correção para
+  múltiplas comparações; nenhuma fusão é padrão recomendado.
+- A1 e A2 leem os rótulos: servem só para simulação e avaliação. Em operação,
+  use `ThompsonQueue` com `update()` à medida que os revisores respondem.
+- O *bootstrap* por `REFREC` (`fusao_robustez.py`) ainda não faz parte do
+  pacote.
+
 ## Perfil v3.1 empacotado
 
 `packaged_config_path("v3.1")` devolve o caminho do perfil v3.1 distribuído com o

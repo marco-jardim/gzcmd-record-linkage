@@ -46,6 +46,11 @@ custos e taxas, não significa reproduzir toda a cadeia experimental da tese.
 | `error_rates_by_band_v4.yaml` | `error_rates_by_band_v4.yaml` | Cópia byte a byte (Claude Haiku 5.5; 1774 e 459 decisões), sem cabeçalho; SHA-256 na tabela acima; teste `test_packaged_v4_yaml_is_verbatim_thesis_copy` compara os bytes quando a tese está disponível |
 | `gzcmd_v31_p_config.yaml` | `gzcmd_v31_config.yaml` | Perfil v3.1/P empacotado, acessível por `packaged_config_path("v3.1")`; declara `estimated_rates_path` |
 | `scripts/fusao_filas.py` (desempate de `rrf` e `round_robin`) | `ranking.py` | Desempate padrão da tese: maior escore e, nos empates, menor índice (`review_queue`: menor `pair_id`); `tie_break="random"` preserva a permutação com semente |
+| `scripts/fusao_filas.py` (`DEFINITIONS`) | `fusion.THESIS_FUSIONS` (`FusionSpec`) | F1-F4, A1, A2 com a ordem dos braços da tese; `window=200`/`None`, `Beta(1, 1)`; F4 escolhida *post hoc* |
+| `scripts/fusao_filas.py` (`round_robin`) | `ranking.interleave`, via `fusion.fuse` | Igualdade exata testada contra cópia inline da tese |
+| `scripts/fusao_filas.py` (`rrf`) | `ranking.rrf` (`k=60`), via `fusion.fuse` | Desempate por índice, ou por `tie_ids` (hash do par, igual a `make_pair_id`) |
+| `scripts/fusao_filas.py` (`thompson`) | `fusion.simulate_thompson`, sobre `ranking.ThompsonQueue` | Mesmo gerador, mesma ordem de sorteios, janela por braço; igualdade exata testada |
+| `scripts/fusao_filas.py` (`metrics`, `aggregate`) | `fusion.queue_metrics`, `fusion.compare_queues` | `searchsorted + 1`, `C(k)` e AUC em degraus `counts[:H-1].sum()/(H*total)`; média e P10/P90 lineares. Meta inalcançável: `None` (a tese rejeita a curva) |
 | `runner.build_engine_from_config` (taxas medidas) | Mesmo nome | v3.1 com `estimated_rates_path` usa as taxas medidas (mudança incompatível em 0.5.0); v3 e o override histórico nunca leem o arquivo |
 
 Validação de probabilidades v3.1 antecede o cálculo de perdas no pacote para
@@ -77,7 +82,9 @@ Conferidos na referência `08befb1` e deliberadamente fora do pacote 0.5.0:
 - lista de atributos permitidos (*allowlist*) e `--policy-version` do commit
   `f566368` da tese;
 - `subamostragem.py`;
-- `anthropic_transport.py`.
+- `anthropic_transport.py`;
+- `scripts/fusao_robustez.py` (*bootstrap* por `REFREC` das fusões);
+- `scripts/contexto_obito.py` (variantes C/CM).
 
 Para bandas sem decisões, `e_unsure` segue a tese (valor inline), diferente do
 notebook tutorial, que usa a taxa do modo.
