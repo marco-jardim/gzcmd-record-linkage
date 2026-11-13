@@ -23,7 +23,9 @@ def test_evaluate_classifier_configuration(
     seen = []
 
     class ClassifierSpy:
-        def __init__(self, *, config):
+        def __init__(self, *, config, feature_set, macd_enabled):
+            assert feature_set == "historical"
+            assert macd_enabled is True
             seen.append(config)
 
         def fit(self, df):

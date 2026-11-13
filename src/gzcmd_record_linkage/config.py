@@ -54,21 +54,24 @@ class LLMReviewConfig:
     error_rates_by_band: dict[str, dict[str, float]]
     estimated_rates_path: str | None = None
 
-    def error_rates_for_mode(self, mode: str) -> dict[str, dict[str, float]]:
+    def error_rates_for_mode(
+        self, mode: str, source: str | Path | None = None
+    ) -> dict[str, dict[str, float]]:
         """Per-band reviewer rates for ``mode``.
 
-        Without ``estimated_rates_path`` these are the inline
-        ``error_rates_by_band`` values. With it, measured rates are read from
-        that file (thesis semantics, see ``reliability.load_band_rates``) with
-        the inline values as the fixed fallback; every band gets ``e_unsure``.
+        Without a rates file these are the inline ``error_rates_by_band``
+        values. With one, measured rates are read from it (thesis semantics, see
+        ``reliability.load_band_rates``) with the inline values as the fixed
+        fallback; every band gets ``e_unsure``. The file is ``source`` when
+        given (an explicit override, e.g. ``run_v3(rates_yaml=...)``), else
+        ``estimated_rates_path``.
         """
-        if self.estimated_rates_path is None:
+        path = self.estimated_rates_path if source is None else source
+        if path is None:
             return {
                 band: dict(rates) for band, rates in self.error_rates_by_band.items()
             }
-        measured = load_band_rates(
-            self.error_rates_by_band, mode=mode, source=self.estimated_rates_path
-        )
+        measured = load_band_rates(self.error_rates_by_band, mode=mode, source=path)
         return {
             band: {"e_fp": err.e_fp, "e_fn": err.e_fn, "e_unsure": err.e_unsure}
             for band, err in measured.items()
@@ -130,6 +133,23 @@ class AnchorFitParams:
                 raise ValueError(f"anchor_platt.{name} must be a positive integer")
 
 
+CALIBRATION_ROUTES = frozenset(
+    {
+        "stub",
+        "platt",
+        "anchor_platt",
+        "fit_platt",
+        "load_platt",
+        "ml_xgb",
+        "fit_ml_rf",
+        "load_ml_rf",
+        "fit_ml_xgb",
+        "load_ml_xgb",
+    }
+)
+"""Values accepted by ``calibration.p_cal`` (every ``run_v3`` route but ``config``)."""
+
+
 @dataclass(frozen=True)
 class CalibrationConfig:
     clip_min: float = 1e-6
@@ -139,6 +159,9 @@ class CalibrationConfig:
     by_band: bool = False
     fallback: str = "error"
     anchor_platt: AnchorFitParams = field(default_factory=AnchorFitParams)
+    # Optional route for ``run_v3(p_cal="config")``; when set it takes precedence
+    # over ``method`` (e.g. ``ml_xgb`` in the v3.1 profile). ``None`` = use method.
+    p_cal: str | None = None
 
 
 @dataclass(frozen=True)
@@ -403,6 +426,12 @@ def _load_calibration_config(data: Mapping[str, Any]) -> CalibrationConfig:
     method = str(cal.get("method", "platt"))
     if method not in {"platt", "anchor_platt", "stub"}:
         raise ValueError("calibration.method must be platt, anchor_platt or stub")
+    p_cal_raw = cal.get("p_cal")
+    p_cal = None if p_cal_raw is None else str(p_cal_raw)
+    if p_cal is not None and p_cal not in CALIBRATION_ROUTES:
+        raise ValueError(
+            "calibration.p_cal must be one of: " + ", ".join(sorted(CALIBRATION_ROUTES))
+        )
     fallback = str(cal.get("fallback", "error"))
     if fallback not in {"error", "platt"}:
         raise ValueError("calibration.fallback must be error or platt")
@@ -441,6 +470,7 @@ def _load_calibration_config(data: Mapping[str, Any]) -> CalibrationConfig:
         method=method,
         by_band=by_band,
         fallback=fallback,
+        p_cal=p_cal,
         anchor_platt=AnchorFitParams(**anchor_params),
         platt=PlattFitParams(
             l2=1e-3 if l2_raw is None else float(l2_raw),

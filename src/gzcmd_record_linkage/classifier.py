@@ -24,6 +24,42 @@ from sklearn.pipeline import Pipeline
 from .loader import COL_TARGET
 
 ClassifierType = Literal["random_forest", "xgboost"]
+FeatureSet = Literal["historical", "allowlist"]
+
+# Comparator attributes admitted by feature_set="allowlist" (raw record fields,
+# identifiers, SCORE and the `nota_final` alias are deliberately absent).
+COMPARATOR_FEATURES = (
+    "NOME prim frag igual",
+    "NOME ult frag igual",
+    "NOME qtd frag iguais",
+    "NOME qtd frag raros",
+    "NOME qtd frag comuns",
+    "NOME qtd frag muito parec",
+    "NOME qtd frag abrev",
+    "NOMEMAE prim frag igual",
+    "NOMEMAE ult frag igual",
+    "NOMEMAE qtd frag iguais",
+    "NOMEMAE qtd frag raros",
+    "NOMEMAE qtd frag comuns",
+    "NOMEMAE qtd frag muito parec",
+    "NOMEMAE qtd frag abrev",
+    "DTNASC dt iguais",
+    "DTNASC dt ap 1digi",
+    "DTNASC dt inv dia",
+    "DTNASC dt inv mes",
+    "DTNASC dt inv ano",
+    "CODMUNRES uf igual",
+    "CODMUNRES uf prox",
+    "CODMUNRES local igual",
+    "CODMUNRES local prox",
+    "ENDERECO via igual",
+    "ENDERECO via prox",
+    "ENDERECO numero igual",
+    "ENDERECO compl prox",
+    "ENDERECO texto prox",
+    "ENDERECO tokens jacc",
+    "nota final",
+)
 
 
 @lru_cache(maxsize=1)
@@ -92,8 +128,29 @@ class ClassifierConfig:
     calibration_cv: int = 5
 
 
-def get_feature_columns(df: pd.DataFrame) -> list[str]:
-    """Identify numeric feature columns for the classifier."""
+def get_feature_columns(
+    df: pd.DataFrame,
+    *,
+    feature_set: FeatureSet = "historical",
+    macd_enabled: bool = True,
+) -> list[str]:
+    """Identify numeric feature columns for the classifier.
+
+    ``feature_set="historical"`` (default) keeps every numeric column that is not
+    metadata. ``"allowlist"`` keeps only the numeric ``COMPARATOR_FEATURES`` plus,
+    when ``macd_enabled``, the numeric ``macd_*`` columns. Both return sorted names.
+    """
+    if feature_set not in ("historical", "allowlist"):
+        raise ValueError("feature_set must be historical or allowlist")
+    if feature_set == "allowlist":
+        allowed = set(COMPARATOR_FEATURES)
+        return sorted(
+            c
+            for c in df.columns
+            if (c in allowed or (macd_enabled and str(c).startswith("macd_")))
+            and pd.api.types.is_numeric_dtype(df[c])
+        )
+
     # Metadata and targets to exclude
     exclude = {
         "COMPREC",
@@ -136,8 +193,16 @@ _DEFAULT_CLASSIFIER_CONFIG = ClassifierConfig()
 
 
 class GZCMDClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, config: ClassifierConfig = _DEFAULT_CLASSIFIER_CONFIG):
+    def __init__(
+        self,
+        config: ClassifierConfig = _DEFAULT_CLASSIFIER_CONFIG,
+        *,
+        feature_set: FeatureSet = "historical",
+        macd_enabled: bool = True,
+    ):
         self.config = config
+        self.feature_set = feature_set
+        self.macd_enabled = macd_enabled
         self.features_: list[str] | None = None
         self.pipeline_: Pipeline | None = None
 
@@ -148,7 +213,9 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
             y_raw = df[COL_TARGET]
             y = pd.Series(y_raw) if not isinstance(y_raw, pd.Series) else y_raw
 
-        self.features_ = get_feature_columns(df)
+        self.features_ = get_feature_columns(
+            df, feature_set=self.feature_set, macd_enabled=self.macd_enabled
+        )
         X = df[self.features_]
 
         # Select base classifier
@@ -235,6 +302,8 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
 
         state = {
             "config": self.config,
+            "feature_set": self.feature_set,
+            "macd_enabled": self.macd_enabled,
             "features": self.features_,
             "pipeline": self.pipeline_,
         }
@@ -243,7 +312,12 @@ class GZCMDClassifier(BaseEstimator, ClassifierMixin):
     @classmethod
     def load(cls, path: str | Path) -> GZCMDClassifier:
         state = joblib.load(path)
-        clf = cls(config=state["config"])
+        # Models saved before these fields existed used the historical selection.
+        clf = cls(
+            config=state["config"],
+            feature_set=state.get("feature_set", "historical"),
+            macd_enabled=state.get("macd_enabled", True),
+        )
         clf.features_ = state["features"]
         clf.pipeline_ = state["pipeline"]
         return clf
