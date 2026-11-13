@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from .np_policy import NPConstraints
 from .reliability import load_band_rates
 
 
@@ -38,6 +39,8 @@ class ModePolicyConfig:
     human_e_fp: float = 0.05
     human_e_fn: float = 0.05
     human_max_pairs_per_window: int | None = None
+    policy_kind: str = "cost"
+    np_policy: NPConstraints = field(default_factory=NPConstraints)
 
 
 @dataclass(frozen=True)
@@ -273,6 +276,21 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
             None if max_auto_raw is None else float(max_auto_raw)
         )
 
+        policy_kind = str(cfg.get("policy_kind", "cost"))
+        if policy_kind not in {"cost", "np"} or (
+            policy_kind == "np" and mode_name != "confirmacao"
+        ):
+            raise ValueError("policy_kind must be cost, or np for confirmacao only")
+        np_cfg = _as_mapping(
+            cfg.get("np"), field=f"decision_policy.modes[{mode_name}].np"
+        )
+        absolute_fp = np_cfg.get("max_fp_expected_total")
+        np_policy = NPConstraints(
+            float(np_cfg.get("max_fp_rate_auto", 0.002)),
+            None if absolute_fp is None else float(absolute_fp),
+            float(np_cfg.get("max_fn_rate_auto", 0.02)),
+        )
+
         parsed[mode_name] = ModePolicyConfig(
             false_positive_cost=float(costs["false_positive"]),
             false_negative_cost=float(costs["false_negative"]),
@@ -290,6 +308,8 @@ def _load_decision_policy(data: Mapping[str, Any]) -> DecisionPolicyConfig:
             human_max_pairs_per_window=_as_mapping(
                 cfg.get("human_budget"), field="human_budget"
             ).get("max_pairs_per_window"),
+            policy_kind=policy_kind,
+            np_policy=np_policy,
         )
 
     return DecisionPolicyConfig(modes=parsed)

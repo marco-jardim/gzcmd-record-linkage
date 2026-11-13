@@ -15,6 +15,8 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from .np_policy import NPConstraints, NPInfeasibleError, select_match_prefix
+
 Decision = Literal["MATCH", "NONMATCH", "LLM_REVIEW", "DEFERRED"]
 
 
@@ -110,6 +112,8 @@ class PolicyEngineV3:
         policy_version: str = "v3",
         human_error: HumanError | None = None,
         human_budget: HumanBudget | None = None,
+        policy_kind: str = "cost",
+        np_constraints: NPConstraints | None = None,
     ) -> None:
         self.costs = costs
         self.llm_error_by_band = llm_error_by_band
@@ -125,6 +129,15 @@ class PolicyEngineV3:
             else (human_error or HumanError())
         )
         self.human_budget = human_budget or HumanBudget()
+        if policy_kind not in {"cost", "np"} or (
+            policy_version == "v3" and policy_kind != "cost"
+        ):
+            raise ValueError(
+                "NP requires policy_version v3.1; policy_kind must be cost or np"
+            )
+        self.policy_kind = policy_kind
+        self.np_constraints = np_constraints or NPConstraints()
+        self.np_diagnostics: dict = {}
 
     def _losses(
         self, p: np.ndarray, bands: np.ndarray
@@ -182,6 +195,8 @@ class PolicyEngineV3:
         if self.policy_version == "v3.1":
             out["loss_match"] = loss_match
             out["loss_nonmatch"] = loss_non
+            if self.policy_kind == "np":
+                return self._triage_np(out)
             return self._triage_bayes(out)
 
         # Default action: base choice
@@ -242,6 +257,102 @@ class PolicyEngineV3:
         out.loc[selected, "action"] = "LLM_REVIEW"
         self.budget.llm_used += int(selected.sum())
 
+        return out
+
+    def _triage_np(self, out: pd.DataFrame) -> pd.DataFrame:
+        """Strict constraint policy; infeasibility raises before consuming budgets.
+
+        Remaining pairs cannot fall back to an unconstrained AUTO decision.
+        If human capacity cannot cover non-selected LLM pairs, fail explicitly.
+        """
+        score_col = "nota final" if "nota final" in out else "nota_final"
+        nota = pd.to_numeric(out[score_col], errors="coerce")
+        if not out.index.is_unique or not np.isfinite(nota).all():
+            raise ValueError("NP requires unique rows and finite scores")
+        out["p_cal"] = out.p_cal.astype(float)
+        if not (np.isfinite(out.p_cal).all() and out.p_cal.between(0, 1).all()):
+            raise ValueError("NP requires finite probabilities in [0,1]")
+        guard = out.get("guardrail", pd.Series(pd.NA, index=out.index, dtype="string"))
+        low = nota.lt(5)
+        fixed_match = nota.ge(9) & guard.eq("ALWAYS_MATCH").fillna(False)
+        if (guard.eq("ALWAYS_NONMATCH").fillna(False) & ~low).any():
+            raise ValueError("v3.1 ALWAYS_NONMATCH is allowed only below 5")
+        candidates = ~(low | fixed_match)
+        chosen_match, diagnostics = select_match_prefix(
+            out.loc[candidates, "p_cal"],
+            out.loc[fixed_match, "p_cal"],
+            self.np_constraints,
+        )
+        out["action"] = "DEFERRED"
+        out["decision_reason"] = "np_human"
+        out.loc[low, ["action", "decision_reason"]] = ["NONMATCH", "guard_low"]
+        out.loc[fixed_match, ["action", "decision_reason"]] = [
+            "MATCH",
+            "guard_high_probability",
+        ]
+        out.loc[chosen_match, ["action", "decision_reason"]] = [
+            "MATCH",
+            "np_match_prefix",
+        ]
+        # Conservative pointwise mirror: every admitted NONMATCH has p<=beta,
+        # hence its average expected FN rate is <=beta as well (default .02).
+        non = (
+            candidates
+            & ~out.index.isin(chosen_match)
+            & out.p_cal.le(self.np_constraints.max_fn_rate_auto)
+        )
+        out.loc[non, ["action", "decision_reason"]] = [
+            "NONMATCH",
+            "np_nonmatch_threshold",
+        ]
+        pending = out.action.eq("DEFERRED")
+        out["loss_human"] = self.human_error.loss(out.p_cal, self.costs)
+        out["evr"] = out.loss_human - out.loss_llm
+        eligible = pending & out.evr.gt(0)
+        llm_remaining = max(0, self.budget.llm_max - self.budget.llm_used)
+        chosen_llm = (
+            out.loc[eligible]
+            .sort_values("evr", ascending=False, kind="stable")
+            .head(llm_remaining)
+            .index
+        )
+        humans_needed = int(pending.sum()) - len(chosen_llm)
+        human_remaining = (
+            len(out)
+            if self.human_budget.max_pairs is None
+            else max(0, self.human_budget.max_pairs - self.human_budget.used)
+        )
+        if humans_needed > human_remaining:
+            raise NPInfeasibleError(
+                "NP review capacity is insufficient; no unsafe AUTO fallback",
+                motivo="orcamento_humano",
+                humanos_necessarios=humans_needed,
+                humanos_disponiveis=human_remaining,
+                **diagnostics,
+            )
+        out.loc[chosen_llm, ["action", "decision_reason"]] = [
+            "LLM_REVIEW",
+            "np_llm_positive_gain",
+        ]
+        out["review_requested"] = eligible
+        out["human_requested"] = pending & ~out.index.isin(chosen_llm)
+        out["grey_zone"] = nota.ge(5) & nota.lt(9)
+        out["high_consistency_failed"] = nota.ge(9) & ~fixed_match
+        out["review_area"] = candidates
+        out["selected_loss"] = np.select(
+            [
+                out.action.eq("MATCH"),
+                out.action.eq("NONMATCH"),
+                out.action.eq("LLM_REVIEW"),
+            ],
+            [out.loss_match, out.loss_nonmatch, out.loss_llm],
+            default=out.loss_human,
+        )
+        self.budget.llm_used += len(chosen_llm)
+        self.human_budget.used += humans_needed
+        self.np_diagnostics = diagnostics
+        for name, value in diagnostics.items():
+            out[name] = value
         return out
 
     def _triage_bayes(self, out: pd.DataFrame) -> pd.DataFrame:

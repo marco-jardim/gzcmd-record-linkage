@@ -11,6 +11,7 @@ from .gzcmd_v3_policy_engine import (
     LLMError,
     PolicyEngineV3,
 )
+from .np_policy import NPConstraints, NPInfeasibleError, select_match_prefix
 
 __all__ = [
     "Budget",
@@ -19,5 +20,8 @@ __all__ = [
     "HumanBudget",
     "HumanError",
     "LLMError",
+    "NPConstraints",
+    "NPInfeasibleError",
     "PolicyEngineV3",
+    "select_match_prefix",
 ]

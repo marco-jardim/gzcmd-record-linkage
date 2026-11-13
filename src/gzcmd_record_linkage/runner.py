@@ -18,6 +18,7 @@ from .classifier import ClassifierConfig, GZCMDClassifier
 from .config import GZCMDConfig, load_config
 from .guardrails import apply_guardrails
 from .loader import LoadConfig, load_comparador_csv
+from .np_policy import NPConstraints
 from .policy_engine import (
     Budget,
     Costs,
@@ -50,6 +51,8 @@ def build_engine_from_config(
     llm_used: int = 0,
     policy_version: str | None = None,
     human_used: int = 0,
+    policy_kind: str | None = None,
+    np_constraints: NPConstraints | None = None,
 ) -> PolicyEngineV3:
     if mode not in cfg.decision_policy.modes:
         known = ", ".join(sorted(cfg.decision_policy.modes.keys()))
@@ -57,6 +60,11 @@ def build_engine_from_config(
 
     mode_cfg = cfg.decision_policy.modes[mode]
     policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
+    # Thesis semantics: NP exists only under v3.1 (a v3 run is always "cost")
+    # and is selectable for confirmacao only.
+    kind = "cost" if policy_version == "v3" else (policy_kind or mode_cfg.policy_kind)
+    if kind == "np" and mode != "confirmacao":
+        raise ValueError("NP is selectable for confirmacao only")
     legacy_override = policy_version == "v3" and cfg.guardrails.policy_version == "v3.1"
 
     costs = Costs(
@@ -116,6 +124,8 @@ def build_engine_from_config(
         policy_version=policy_version,
         human_error=HumanError(mode_cfg.human_e_fp, mode_cfg.human_e_fn),
         human_budget=HumanBudget(mode_cfg.human_max_pairs_per_window, human_used),
+        policy_kind=kind,
+        np_constraints=np_constraints or mode_cfg.np_policy,
     )
 
 
@@ -136,6 +146,8 @@ def run_v3(
     classifier_config: ClassifierConfig | None = None,
     policy_version: str | None = None,
     human_used: int = 0,
+    policy_kind: str | None = None,
+    np_constraints: NPConstraints | None = None,
 ) -> tuple[pd.DataFrame, RunSummary]:
     cfg = load_config(config_path)
     policy_version = cfg.guardrails.policy_version if policy_version is None else policy_version
@@ -248,6 +260,7 @@ def run_v3(
     engine = build_engine_from_config(
         cfg, mode=mode, llm_used=llm_used,
         policy_version=policy_version, human_used=human_used,
+        policy_kind=policy_kind, np_constraints=np_constraints,
     )
     out = engine.triage(df)
 
