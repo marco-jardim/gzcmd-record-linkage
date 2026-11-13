@@ -45,6 +45,24 @@ ReviewVerdict = Literal["MATCH", "NONMATCH", "UNSURE"]
 # Where to find the v3.1 prompt
 _PROMPT_PATH = Path(__file__).parent / "gzcmd_v3_llm_prompt.md"
 
+# Packaged prompt files selectable through ``prompt_version``. "v3" resolves to
+# ``_PROMPT_PATH`` at call time (so it stays overridable); "v4" is the variant
+# without engine outputs used in the thesis Claude Haiku runs.
+_PROMPT_V4_PATH = Path(__file__).parent / "gzcmd_v4_llm_prompt.md"
+PROMPT_VERSIONS = ("v3", "v4")
+
+
+def _resolve_prompt_path(prompt_version: str = "v3") -> Path:
+    if prompt_version == "v3":
+        return _PROMPT_PATH
+    if prompt_version == "v4":
+        return _PROMPT_V4_PATH
+    msg = (
+        f"Unknown prompt_version {prompt_version!r}; expected one of {PROMPT_VERSIONS}"
+    )
+    raise ValueError(msg)
+
+
 # Valid reason codes (must match schema)
 VALID_REASON_CODES = frozenset(
     {
@@ -151,13 +169,13 @@ class ReviewResult:
 # ---------------------------------------------------------------------------
 
 
-def _load_system_prompt() -> str:
-    """Load the v3.1 system prompt from the markdown file.
+def _load_system_prompt(prompt_version: str = "v3") -> str:
+    """Load the system prompt (v3.1 by default) from the markdown file.
 
     Extracts only the content under ``## Mensagem `system``` through
     the next ``---`` or ``## Mensagem `user````.
     """
-    raw = _PROMPT_PATH.read_text(encoding="utf-8")
+    raw = _resolve_prompt_path(prompt_version).read_text(encoding="utf-8")
 
     # Extract system message section
     match = re.search(
@@ -171,9 +189,9 @@ def _load_system_prompt() -> str:
     return raw.strip()
 
 
-def _load_user_template() -> str:
+def _load_user_template(prompt_version: str = "v3") -> str:
     """Load the user message template from the prompt file."""
-    raw = _PROMPT_PATH.read_text(encoding="utf-8")
+    raw = _resolve_prompt_path(prompt_version).read_text(encoding="utf-8")
 
     match = re.search(
         r"## Mensagem `user`.*?\n(.*?)(?=\n---|\n## Exemplo|\Z)",
@@ -211,6 +229,7 @@ def build_review_messages(
     dossier: "Dossier",
     agent_role: str = "Agent-A",
     batch_mode: bool = False,
+    prompt_version: str = "v3",
 ) -> list[dict[str, str]]:
     """Build chat messages for a review agent (public, no class instance needed).
 
@@ -218,9 +237,10 @@ def build_review_messages(
     When *batch_mode* is True an extra instruction is appended to
     suppress chain-of-thought reasoning so the model outputs **only**
     the JSON object (avoids token-budget exhaustion in batch jobs).
+    *prompt_version* selects the packaged prompt (``"v3"`` default, ``"v4"``).
     """
-    system_prompt = _load_system_prompt()
-    user_template = _load_user_template()
+    system_prompt = _load_system_prompt(prompt_version)
+    user_template = _load_user_template(prompt_version)
     full_system = system_prompt + _ROLE_INSTRUCTION.get(agent_role, "")
     if batch_mode:
         full_system += (
@@ -241,10 +261,11 @@ def build_arbiter_messages(
     dossier: "Dossier",
     response_a: dict[str, Any],
     response_b: dict[str, Any],
+    prompt_version: str = "v3",
 ) -> list[dict[str, str]]:
     """Build chat messages for the arbiter (public, no class instance needed)."""
-    system_prompt = _load_system_prompt()
-    user_template = _load_user_template()
+    system_prompt = _load_system_prompt(prompt_version)
+    user_template = _load_user_template(prompt_version)
     full_system = (
         system_prompt
         + "\n\nVocê é o Árbitro. Dois revisores independentes divergiram. "
@@ -428,6 +449,10 @@ class LLMReviewer:
         Base delay between retries (doubles each attempt).
     timeout_s:
         HTTP request timeout in seconds.
+    prompt_version:
+        Packaged prompt file: ``"v3"`` (default) or ``"v4"`` (instructions
+        without engine outputs, as in the thesis Claude Haiku runs). Pair it
+        with ``DossierView(dossier, True)`` to also drop ``model_outputs``.
     """
 
     api_key: str
@@ -444,6 +469,7 @@ class LLMReviewer:
     max_retries: int = 3
     retry_delay_s: float = 2.0
     timeout_s: float = 60.0
+    prompt_version: str = "v3"
 
     # Cached prompts (loaded lazily)
     _system_prompt: str = field(default="", init=False, repr=False)
@@ -472,8 +498,8 @@ class LLMReviewer:
 
     def _get_prompts(self) -> tuple[str, str]:
         if not self._system_prompt:
-            self._system_prompt = _load_system_prompt()
-            self._user_template = _load_user_template()
+            self._system_prompt = _load_system_prompt(self.prompt_version)
+            self._user_template = _load_user_template(self.prompt_version)
         return self._system_prompt, self._user_template
 
     # ------------------------------------------------------------------

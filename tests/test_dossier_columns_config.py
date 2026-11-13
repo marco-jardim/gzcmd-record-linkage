@@ -62,3 +62,20 @@ def test_package_generation_defaults_are_preserved_and_conflict_is_reserved():
         assert model["max_tokens"] == 500
     assert config["consistency"]["conflict_margin_delta"] == 0.03
     assert "RESERVED, NOT IMPLEMENTED" in text
+
+
+def test_dossier_view_without_model_outputs_preserves_other_fields():
+    from gzcmd_record_linkage.llm_dossier import DossierView
+
+    row = pd.Series({"COMPREC": 1, "REFREC": 2, "PASSO": 3, "nota final": 7.5})
+    dossier = build_dossier(row)
+    full = DossierView(dossier)
+    ablated = DossierView(dossier, True)
+    assert full.to_dict() == dossier.to_dict()
+    assert full.to_json(sort_keys=True) == dossier.to_json(sort_keys=True)
+    assert "model_outputs" not in ablated.to_dict()
+    expected = dossier.to_dict()
+    expected.pop("model_outputs")
+    assert ablated.to_dict() == expected
+    assert ablated.pair_id == dossier.pair_id
+    assert dossier.to_dict()["model_outputs"]  # source dossier is untouched
