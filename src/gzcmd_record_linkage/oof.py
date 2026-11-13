@@ -22,7 +22,10 @@ probe for CUDA.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -188,3 +191,187 @@ def nested_oof_probabilities(
     if not np.isfinite(probabilities).all() or (folds < 0).any():
         raise ValueError("Incomplete outer OOF predictions")
     return probabilities, folds
+
+
+def numeric_features(raw: pd.DataFrame) -> pd.DataFrame:
+    """Thesis comparator allowlist as a float64 matrix (``ml_oof.numeric_features``).
+
+    Keeps the columns whose name starts with one of ``context.FEATURE_PREFIXES``
+    plus ``nota final``/``nota_final``, in ``raw`` order, never identifiers or
+    labels. Decimal commas become points, unparsable values become missing and
+    missing becomes 0.0 (the thesis imputation for the comparator attributes).
+    Unlike ``context.base_features`` this port does not raise when no column
+    matches (it returns an empty frame), exactly as the thesis routine.
+    """
+    from gzcmd_record_linkage.context import FEATURE_PREFIXES
+
+    cols = [
+        c
+        for c in raw
+        if c.startswith(FEATURE_PREFIXES) or c in {"nota final", "nota_final"}
+    ]
+    x = raw[cols].apply(
+        lambda s: pd.to_numeric(
+            s.astype(str).str.replace(",", ".", regex=False), errors="coerce"
+        )
+    )
+    return x.astype("float64").fillna(0.0)
+
+
+def pair_ids(df: pd.DataFrame) -> pd.Series:
+    """Unique ``make_pair_id(COMPREC, REFREC, PASSO)`` of each row (thesis port).
+
+    The three columns are resolved with ``loader.resolve_prefixed_column``
+    (OpenRecLink headers such as ``COMPREC,C,12,0`` are accepted) and stripped.
+    Raises ``ValueError`` when a column is missing or the identifiers repeat.
+    """
+    from gzcmd_record_linkage.llm_dossier import make_pair_id
+    from gzcmd_record_linkage.loader import resolve_prefixed_column
+
+    cols = [
+        resolve_prefixed_column(df, name) for name in ("COMPREC", "REFREC", "PASSO")
+    ]
+    if any(c is None for c in cols):
+        raise ValueError("Missing pair metadata")
+    values = [df[c].astype(str).str.strip() for c in cols]
+    ids = pd.Series(
+        [make_pair_id(*v) for v in zip(*values, strict=True)], index=df.index
+    )
+    if not ids.is_unique:
+        raise ValueError("pair_id must be unique")
+    return ids
+
+
+_OOF_METHOD = "nested-xgb-isotonic-5x5-v1"
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fit_xgb_oof(
+    input_csv: str | Path,
+    *,
+    output_path: str | Path | None = None,
+    reuse: bool = False,
+    split_by: str = "row",
+    xgb_params: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Nested out-of-fold XGBoost + isotonic probabilities of every pair of a CSV.
+
+    Generic port of the thesis ``ml_oof.fit_xgb_oof``. The comparator CSV
+    (``;`` separated, header metadata such as ``COMPREC,C,12,0`` accepted) is
+    read as strings; features come from ``numeric_features`` and the label is
+    ``PAR in {1, 2}``. Returns a frame with ``pair_id`` (``pair_ids``), ``nota``,
+    ``p_cal_platt`` (a supervised Platt fit on ``nota final``, for comparison),
+    ``p_cal_ml`` (the nested OOF probability) and ``fold``. No raw record or
+    identifier other than the hashed ``pair_id`` is kept.
+
+    ``output_path`` is where the table is persisted (plus a ``.json`` sidecar with
+    the fingerprint, feature list and the CSV hash); ``None`` persists nothing
+    and ``reuse`` then raises. With ``reuse=True`` a persisted table is returned
+    without refitting only if the sidecar fingerprint matches the current input
+    (SHA-256 of the CSV bytes, method, seed, folds, ``split_by``, the effective
+    XGBoost parameters and the sklearn/xgboost versions) and the table hash and
+    row count match. Otherwise it is recomputed and overwritten. The fingerprint
+    does not depend on any source file of the thesis or of this package.
+    """
+    import sklearn
+    import xgboost
+
+    from gzcmd_record_linkage.calibration import compute_p_cal, fit_platt_from_df
+    from gzcmd_record_linkage.loader import resolve_prefixed_column
+
+    if split_by not in _SPLIT_BY:
+        raise ValueError("split_by must be row, refrec or comprec")
+    if reuse and output_path is None:
+        raise ValueError("reuse requires output_path")
+    source = Path(input_csv)
+    output = Path(output_path) if output_path is not None else None
+    meta_path = output.with_suffix(".json") if output is not None else None
+    effective_params = {**THESIS_XGB_PARAMS, **(xgb_params or {})}
+    fingerprint = json.loads(
+        json.dumps(
+            {
+                "method": _OOF_METHOD,
+                "seed": SEED,
+                "folds": N_SPLITS,
+                "split_by": split_by,
+                "xgb_params": effective_params,
+                "source_sha256": _file_sha256(source),
+                "sklearn": sklearn.__version__,
+                "xgboost": xgboost.__version__,
+            },
+            sort_keys=True,
+        )
+    )
+    if (
+        reuse
+        and output is not None
+        and meta_path is not None
+        and output.exists()
+        and meta_path.exists()
+    ):
+        metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        if metadata.get("fingerprint") == fingerprint and metadata.get(
+            "csv_sha256"
+        ) == _file_sha256(output):
+            cached = pd.read_csv(output, dtype={"pair_id": str})
+            if len(cached) == metadata.get("n_rows"):
+                return cached
+
+    raw = pd.read_csv(source, sep=";", dtype=str, low_memory=False)
+    raw.columns = pd.Index([c.split(",")[0] for c in raw.columns])
+    if not raw.columns.is_unique:
+        raise ValueError("Ambiguous comparator headers after metadata normalization")
+    x = numeric_features(raw)
+    y = (
+        pd.to_numeric(raw["PAR"], errors="coerce")
+        .fillna(0)
+        .isin([1, 2])
+        .astype(int)
+        .to_numpy()
+    )
+    groups: np.ndarray | None = None
+    if split_by != "row":
+        column = resolve_prefixed_column(raw, split_by.upper())
+        if column is None:
+            raise ValueError(f"Missing {split_by.upper()} group column")
+        series = raw[column].astype("string").str.strip()
+        if series.isna().any() or series.eq("").any():
+            raise ValueError("Missing group identity")
+        groups = series.to_numpy(dtype=str)
+    probabilities, folds = nested_oof_probabilities(
+        x, y, split_by=split_by, groups=groups, xgb_params=xgb_params
+    )
+    score = x["nota final"] if "nota final" in x else x["nota_final"]
+    platt_df = pd.DataFrame({"nota final": score, "TARGET": y})
+    platt = compute_p_cal(platt_df, method="platt", model=fit_platt_from_df(platt_df))
+    result = pd.DataFrame(
+        {
+            "pair_id": pair_ids(raw),
+            "nota": score,
+            "p_cal_platt": platt,
+            "p_cal_ml": probabilities,
+            "fold": folds,
+        }
+    )
+    if output is not None and meta_path is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.to_csv(output, index=False)
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "fingerprint": fingerprint,
+                    "features": list(x.columns),
+                    "n_rows": len(result),
+                    "n_groups": (
+                        int(len(np.unique(groups))) if groups is not None else len(raw)
+                    ),
+                    "csv_sha256": _file_sha256(output),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    return result
