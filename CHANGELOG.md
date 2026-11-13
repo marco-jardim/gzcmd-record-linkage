@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.6.0 (2026-11-13, no repositório, ainda não publicada)
+## 0.6.0 (2026-11-13)
 
-A 0.5.0 nunca foi publicada no PyPI (a última publicada é a 0.4.2): esta versão
+A 0.5.0 nunca foi publicada no PyPI (a anterior publicada é a 0.4.2): esta versão
 inclui tudo o que está descrito abaixo e na seção 0.5.0.
 
 Alterado (**incompatível**):
@@ -105,7 +105,7 @@ Corrigido:
   Datas ausentes agora tratadas como na tese; teste de regressão e de paridade
   da derivação MACD.
 
-## 0.5.0 (2026-11-13, no repositório, ainda não publicada)
+## 0.5.0 (2026-11-13, nunca publicada; incluída na 0.6.0)
 
 Adicionado:
 

@@ -27,32 +27,31 @@ mecanismos implementados:
 
 ## Versão e escopo
 
-- Distribuição PyPI: `gzcmd-record-linkage==0.4.2`
+- Distribuição PyPI: `gzcmd-record-linkage==0.6.0`
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.6.0** (ainda não publicada)
-- Versão mais recente no PyPI: **0.4.2** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1 e 0.4.2;
+- Versão no repositório: **0.6.0** (publicada no PyPI em 2026-11-13)
+- Versão mais recente no PyPI: **0.6.0** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1, 0.4.2 e 0.6.0;
   a 0.5.0 nunca foi publicada e seu conteúdo está incluído na 0.6.0)
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
 de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo fornece
-0.4.2, com suporte às políticas v3 e v3.1. A paridade da política não inclui
+0.6.0, com suporte às políticas v3 e v3.1. A paridade da política não inclui
 automaticamente os modelos, as probabilidades OOF nem as taxas empíricas dos
 experimentos da tese.
 
 ## Instalação
 
 ```console
-python -m pip install gzcmd-record-linkage==0.4.2
+python -m pip install gzcmd-record-linkage==0.6.0
 ```
 
 A versão 0.6.0 (perfil v3.1 empacotado, `estimated_rates_path`, utilitários de
 fila, avaliação NP, arranjo sequencial, transporte Anthropic e rota `ml_xgb`; ver
-`CHANGELOG.md`) está apenas no repositório e ainda não foi publicada no PyPI. A
-0.5.0 nunca foi publicada. Até a publicação, instale a 0.6.0 a partir do
-código-fonte.
+`CHANGELOG.md`) foi publicada no PyPI em 2026-11-13. A
+0.5.0 nunca foi publicada; seu conteúdo está incluído na 0.6.0.
 
 O transporte Anthropic (`AnthropicReviewer`) usa a dependência opcional
 `anthropic`, importada apenas quando o primeiro pedido é feito:
@@ -605,7 +604,7 @@ pacote:
 - Versão 3.0.0: [10.5281/zenodo.23928226](https://doi.org/10.5281/zenodo.23928226)
 - DOI conceito: [10.5281/zenodo.18652286](https://doi.org/10.5281/zenodo.18652286)
 
-Ao utilizar o pacote, cite a versão efetivamente usada (por exemplo, 0.4.2 publicada, ou
+Ao utilizar o pacote, cite a versão efetivamente usada (por exemplo, 0.6.0 publicada, ou
 outra versão identificada, com seu commit quando instalada do repositório) e o
 [repositório de software](https://github.com/marco-jardim/gzcmd-record-linkage).
 Para o método e os experimentos, cite também a tese de Marco Elisio Oliveira
