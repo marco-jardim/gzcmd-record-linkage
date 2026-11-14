@@ -72,6 +72,18 @@ Para desenvolvimento, a partir deste repositório:
 python -m pip install -e ".[dev]"
 ```
 
+Por padrão, a suite de testes (`pytest`) usa metade das CPUs lógicas, em
+prioridade abaixo do normal, e limita as threads de BLAS/OpenMP ao mesmo valor,
+para não saturar a máquina. Isso não altera nenhum parâmetro da biblioteca nem
+os resultados numéricos. Use `PYTEST_MAX_CPUS=<n>` para ajustar o número de CPUs
+e `PYTEST_CPU_LIMIT=0` para desativar o limite. Em CI (variável `CI` definida)
+só as variáveis de threads são aplicadas.
+
+```console
+PYTEST_MAX_CPUS=4 python -m pytest
+PYTEST_CPU_LIMIT=0 python -m pytest
+```
+
 A versão é declarada em `pyproject.toml`; não depende de `hatch-vcs`.
 
 ## Exemplo mínimo sem dados individuais nem serviços externos
