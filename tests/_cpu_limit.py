@@ -60,7 +60,8 @@ def resolve_max_cpus(environ: MutableMapping[str, str] | None = None) -> int:
         value = 0
     if value < 1:
         _warn(
-            f"PYTEST_MAX_CPUS={raw!r} inválido (esperado inteiro >= 1); "\n            f"usando {default}"
+            f"PYTEST_MAX_CPUS={raw!r} inválido (esperado inteiro >= 1); "
+            f"usando {default}"
         )
         return default
     return value
@@ -153,7 +154,6 @@ def _set_affinity_windows(n: int) -> bool:
 def current_affinity_count() -> int | None:
     """Nº de CPUs permitidas ao processo atual; ``None`` onde não há API."""
     if sys.platform == "win32":
-
         k32 = _win_kernel32()
         masks = _win_affinity_masks(k32)
         if masks is None:
