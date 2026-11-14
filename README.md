@@ -15,7 +15,9 @@ mecanismos implementados:
   A probabilidade isotônica fora da amostra (OOF) usada na tese é portada por
   `gzcmd_record_linkage.oof` (`nested_oof_probabilities`, ver "Filas de
   contexto (C/CM)") e passada ao motor de política (`PolicyEngineV3`) na coluna
-  `p_cal`; fora desse módulo, o pacote só calibra por Platt (acima).
+  `p_cal`. A rota `p_cal="ml_xgb"` (XGBoost isotônico OOF, `oof.fit_xgb_oof`) e
+  a recalibração isotônica abaixo do corte do arranjo sequencial (ver
+  "Arranjo sequencial (ASR)") também estão no pacote, além de Platt (acima).
 - **Mixture-of-experts**: uso livre do termo para a articulação de regras,
   classificador e revisor sob uma política, sem mecanismo aprendido de seleção
   entre especialistas.
@@ -27,31 +29,35 @@ mecanismos implementados:
 
 ## Versão e escopo
 
-- Distribuição PyPI: `gzcmd-record-linkage==0.6.0`
+- Distribuição PyPI: `gzcmd-record-linkage==0.6.1`
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.6.0** (publicada no PyPI em 2026-11-13)
-- Versão mais recente no PyPI: **0.6.0** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1, 0.4.2 e 0.6.0;
-  a 0.5.0 nunca foi publicada e seu conteúdo está incluído na 0.6.0)
+- Versão no repositório: **0.6.1** (publicada no PyPI em 2026-11-14)
+- Versão mais recente no PyPI: **0.6.1** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1, 0.4.2, 0.6.0 e 0.6.1;
+  a 0.5.0 nunca foi publicada e seu conteúdo está incluído na 0.6.0; a 0.6.1
+  altera somente a documentação)
 - Políticas: **v3** (padrão, três ações) e **v3.1** (quatro ações, desde 0.4.0)
 
 A versão do pacote, a versão da política (v3 ou v3.1) e a versão do depósito
 de dados (3.0.0) não são intercambiáveis. A instalação PyPI abaixo fornece
-0.6.0, com suporte às políticas v3 e v3.1. A paridade da política não inclui
-automaticamente os modelos, as probabilidades OOF nem as taxas empíricas dos
-experimentos da tese.
+0.6.1, com suporte às políticas v3 e v3.1. A paridade da política não inclui
+os modelos treinados nem os dados dos experimentos da tese: as probabilidades
+OOF são calculadas a partir dos seus rótulos (rota `ml_xgb`), e as taxas
+empíricas por banda (Claude Haiku 5.5, prompt v4) acompanham apenas o perfil
+v3.1 empacotado.
 
 ## Instalação
 
 ```console
-python -m pip install gzcmd-record-linkage==0.6.0
+python -m pip install gzcmd-record-linkage==0.6.1
 ```
 
 A versão 0.6.0 (perfil v3.1 empacotado, `estimated_rates_path`, utilitários de
 fila, avaliação NP, arranjo sequencial, transporte Anthropic e rota `ml_xgb`; ver
 `CHANGELOG.md`) foi publicada no PyPI em 2026-11-13. A
-0.5.0 nunca foi publicada; seu conteúdo está incluído na 0.6.0.
+0.5.0 nunca foi publicada; seu conteúdo está incluído na 0.6.0. A 0.6.1
+(2026-11-14) é uma versão somente de documentação.
 
 O transporte Anthropic (`AnthropicReviewer`) usa a dependência opcional
 `anthropic`, importada apenas quando o primeiro pedido é feito:
@@ -95,7 +101,7 @@ print(saida[["p_cal", "action", "review_requested"]]
       .to_string(index=False))
 ```
 
-Saída na versão 0.3.0:
+Saída (verificada na versão 0.6.1; idêntica à da 0.3.0):
 
 ```text
  p_cal     action  review_requested
@@ -111,8 +117,11 @@ contabiliza os encaminhamentos; usar o mesmo motor novamente mantém `llm_used`.
 
 `gzcmd_record_linkage.runner_api.run_v3` combina carregamento, atributos derivados,
 bandas, calibração, guardas e triagem por *expected loss*. Retorna um `DataFrame`
-e um `RunSummary`. O arquivo de configuração incluído na distribuição é
-`gzcmd_v3_config.yaml`, acessível com `importlib.resources.files`.
+e um `RunSummary`. A distribuição inclui dois perfis de configuração:
+`gzcmd_v3_config.yaml` (padrão, política v3) e `gzcmd_v31_config.yaml` (política
+v3.1; ver "Perfil v3.1 empacotado"). Ambos são acessíveis com
+`config.packaged_config_path("v3")` e `packaged_config_path("v3.1")` ou com
+`importlib.resources.files`.
 
 O carregador espera um CSV do comparador, separado por ponto e vírgula, com vírgula
 decimal. No protocolo da tese, os potenciais pares vêm do OpenRecLink e os
@@ -167,9 +176,10 @@ municipal. Componentes separados de ano/mês/dia e o campo composto de primeiro 
 construtor. Campos nominais são excluídos, mas isso não torna os subescores e o
 pseudônimo de par dados anônimos nem autoriza seu envio a terceiros.
 
-O YAML distribuído é um padrão da biblioteca, não a configuração dos runs da
-tese. Os três revisores estão descritos nele com `gpt-5.2-pro`, `temperature: 0.0`
-e `max_tokens: 500`; esses defaults foram preservados. O experimento da tese com
+Os YAML distribuídos são padrões da biblioteca, não a configuração dos runs da
+tese. No perfil v3 (`gzcmd_v3_config.yaml`), os três revisores estão descritos com
+`gpt-5.2-pro`, `temperature: 0.0` e `max_tokens: 500`; esses defaults foram
+preservados. O perfil v3.1 empacotado declara `max_tokens: 2500`. O experimento da tese com
 Claude Haiku 5.5 omitiu `temperature` e usou `max_tokens: 2500`, com instruções v4
 e sem `model_outputs` no dossiê. Reproduzir esse experimento exige seus runners,
 instruções, coortes, calibração e taxas empíricas; não basta carregar o YAML do
@@ -188,7 +198,8 @@ O runner não executa automaticamente a revisão externa dos pares encaminhados.
 A ordenação padrão da política continua por `evr` (e, na v3.1, pelos ganhos
 humanos e de fallback). Essa ordenação distribui orçamento, não é substituída
 pela fusão. O perfil histórico `p_cal="platt"`, `policy_version="v3"` permanece
-inalterado. Não há nova chave de configuração nem opção CLI: o módulo
+inalterado. Para a ordenação, não há chave de configuração nem opção CLI
+(verificado: `ranking` não é importado pelo runner nem pela CLI): o módulo
 `gzcmd_record_linkage.ranking` é um utilitário opt-in para uma fila de revisão
 humana já selecionada pelo chamador, por exemplo, os pares abaixo de seu corte.
 
@@ -507,9 +518,10 @@ cfg = load_config(packaged_config_path("v3.1"))
 Mudança incompatível em 0.5.0: configurações v3.1 com `estimated_rates_path`
 agora usam as taxas medidas por banda em vez das taxas inline. Consulte
 `docs/PARIDADE_v31.md` e `CHANGELOG.md`.
+
 ## Linha de comando
 
-A CLI existe na versão 0.3.0 e oferece `run`, `fit-calibration` e `eval`:
+A CLI existe desde a versão 0.3.0 e oferece `run`, `fit-calibration` e `eval`:
 
 ```console
 gzcmd --help
@@ -582,12 +594,18 @@ acrescenta à perda LLM a carga humana esperada após abstenção. As taxas de e
 humano são hipóteses, não concordância medida. `human_used` permite continuar
 o orçamento entre lotes; `RunSummary` informa consumo humano e versão da política.
 
-O YAML distribuído conserva os custos e taxas fixas da v3, inclusive custo LLM
-0,25, para não alterar o perfil histórico. Para reproduzir um cenário v3.1 da
-tese, forneça seu YAML com custo LLM 0,005, taxas por banda, probabilidades OOF,
-modelos e particionamento correspondentes. Taxas empíricas externas não são
-carregadas automaticamente. O comando `eval` permanece um avaliador **v3** de
-três ações; não apresenta métricas v3.1 como se fossem avaliação completa.
+O perfil v3 distribuído (`gzcmd_v3_config.yaml`) conserva os custos e taxas fixas
+da v3, inclusive custo LLM 0,25, para não alterar o perfil histórico. O perfil
+v3.1 empacotado (`packaged_config_path("v3.1")`) declara custo LLM 0,005,
+guardas 9/5, `p_cal: ml_xgb` (probabilidades OOF calculadas por
+`oof.fit_xgb_oof` a partir dos seus rótulos) e `estimated_rates_path`, que
+carrega automaticamente as taxas empíricas por banda na v3.1 (ver "Perfil v3.1
+empacotado"). Para reproduzir um cenário v3.1 da tese, ainda são necessários
+seus modelos, coortes e particionamento correspondentes. O comando `eval` aceita
+`--policy-version {v3,v3.1}`; sem a opção, conserva a avaliação histórica v3 de
+três ações. Na v3.1, ações diferentes de `MATCH`, `NONMATCH` e `LLM_REVIEW` (por
+exemplo, `DEFERRED`) contam como indecisas nas métricas do `eval`, que não são
+uma avaliação completa do funil de quatro ações.
 
 Preserve versões das dependências, sementes e grupos de treinamento/avaliação.
 Custos e erros dos revisores são hipóteses operacionais; não substituem auditoria.
@@ -604,7 +622,7 @@ pacote:
 - Versão 3.0.0: [10.5281/zenodo.23928226](https://doi.org/10.5281/zenodo.23928226)
 - DOI conceito: [10.5281/zenodo.18652286](https://doi.org/10.5281/zenodo.18652286)
 
-Ao utilizar o pacote, cite a versão efetivamente usada (por exemplo, 0.6.0 publicada, ou
+Ao utilizar o pacote, cite a versão efetivamente usada (por exemplo, 0.6.1 publicada, ou
 outra versão identificada, com seu commit quando instalada do repositório) e o
 [repositório de software](https://github.com/marco-jardim/gzcmd-record-linkage).
 Para o método e os experimentos, cite também a tese de Marco Elisio Oliveira
