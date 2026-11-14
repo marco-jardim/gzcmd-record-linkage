@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.1 (2026-11-14)
+
+Documentação: README atualizado para as capacidades da 0.5.0/0.6.0. Nenhuma
+mudança de comportamento do código. Afirmações corrigidas:
+
+- "Calibrated": o pacote não "só calibra por Platt"; também há a rota
+  `p_cal="ml_xgb"` (isotônica OOF) e a recalibração isotônica do arranjo
+  sequencial.
+- Taxas empíricas: "não são carregadas automaticamente" deixou de valer;
+  `llm_review.reliability.estimated_rates_path` as carrega na v3.1 e o perfil v3.1
+  empacotado já as inclui.
+- Reprodução v3.1: o perfil `packaged_config_path("v3.1")` (custo LLM 0,005,
+  guardas 9/5, `p_cal: ml_xgb`) existe; deixou de ser necessário "fornecer seu
+  YAML" para esses parâmetros.
+- `eval`: não é mais descrito como avaliador somente v3; aceita
+  `--policy-version {v3,v3.1}` (mantida a ressalva de que ações fora de `MATCH`,
+  `NONMATCH` e `LLM_REVIEW` contam como indecisas).
+- Configuração distribuída: são dois perfis (`gzcmd_v3_config.yaml` e
+  `gzcmd_v31_config.yaml`), não só o v3; a descrição de `gpt-5.2-pro` vale para o
+  perfil v3.
+- Paridade: a frase sobre OOF e taxas empíricas "não incluídas" foi qualificada.
+- Ordenação da fila: "Não há nova chave de configuração nem opção CLI" passou a
+  se referir explicitamente à ordenação (`ranking`).
+- Exemplo mínimo: rótulo "Saída na versão 0.3.0" atualizado (saída verificada na
+  0.6.1, idêntica).
+- Versões, instalação e citação atualizadas para 0.6.1; faltava linha em branco
+  antes de "Linha de comando".
 ## 0.6.0 (2026-11-13)
 
 A 0.5.0 nunca foi publicada no PyPI (a anterior publicada é a 0.4.2): esta versão
