@@ -1,0 +1,34 @@
+{
+  "model": "claude-haiku-5-5",
+  "prompt_version": "v4",
+  "removed_fields": [
+    "features.nota_final"
+  ],
+  "date": "2026-11-15",
+  "n_pairs": 4604,
+  "jsonl": "haiku-5-5_v4_sem-nota.jsonl",
+  "sha256": "51521231ba9779b52ea68b3896b35cf728b851e016280d1bc9971b4609b931d5",
+  "contents": "decisions, confidences, reason codes and token counts; no raw_json, evidence_summary or free text",
+  "origin": {
+    "precedence": "calibration_sample > rerank_test > queue_runs_and_baselines",
+    "calibration_sample": {
+      "seed": 20261115,
+      "per_band": 100,
+      "n_pairs": 717
+    },
+    "rerank_test": {
+      "windows": [
+        500,
+        1000,
+        2000,
+        3000
+      ],
+      "pool": "pairs below the cutoff, ordered by decreasing nota",
+      "n_pairs": 2785
+    },
+    "queue_runs_and_baselines": {
+      "n_pairs": 1102
+    }
+  },
+  "rates_note": "Rates are raw proportions (no Laplace smoothing) measured on the calibration sample, both sides of the cutoff together, nota hidden. 'low' has only 3 true pairs (FN is 2/3) and 'high' only 2 non-pairs (FP is 0/2): treat those two bands as unmeasured. All the non-pairs of the sample lie below the cutoff."
+}
