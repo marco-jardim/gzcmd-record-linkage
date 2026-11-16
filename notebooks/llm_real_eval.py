@@ -34,7 +34,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -47,6 +47,7 @@ from gzcmd_record_linkage.llm_review import AgentResponse, LLMCallError, ReviewR
 from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
 from gzcmd_record_linkage.self_calibrating_queue import (
     EXPLORE_ARM,
+    Decision,
     OracleReviewer,
     SelfCalibratingConfig,
     SelfCalibratingSession,
@@ -124,11 +125,32 @@ class ReviewAbort(ReviewStopped):
 # ---------------------------------------------------------------------------
 
 
-def load_api_key(env_path: Path | str = ENV_PATH) -> str:
-    """Lê ``ANTHROPIC_API_KEY_ALT`` do ``.env``/ambiente. Nunca imprime a chave."""
-    from dotenv import load_dotenv  # type: ignore[import-untyped]
+def _read_env_file(env_path: Path) -> dict[str, str]:
+    """Lê pares ``CHAVE=valor`` de um ``.env`` simples, sem depender de dotenv."""
+    values: dict[str, str] = {}
+    if not env_path.is_file():
+        return values
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.removeprefix("export ").partition("=")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[name.strip()] = value
+    return values
 
-    load_dotenv(Path(env_path))
+
+def load_api_key(env_path: Path | str = ENV_PATH) -> str:
+    """Lê ``ANTHROPIC_API_KEY_ALT`` do ambiente ou do ``.env``. Nunca imprime a chave.
+
+    O ambiente tem precedência sobre o arquivo, como no ``load_dotenv`` padrão.
+    """
+    if not os.environ.get(KEY_VAR, "").strip():
+        file_value = _read_env_file(Path(env_path)).get(KEY_VAR, "")
+        if file_value:
+            os.environ[KEY_VAR] = file_value
     key = os.environ.get(KEY_VAR, "").strip()
     if not key:
         raise MissingApiKeyError(
@@ -1507,11 +1529,16 @@ class BudgetLedger:
         )
 
 
-def queue_config(negative_labels: str, seed: int = SEED) -> SelfCalibratingConfig:
+NegativeLabels = Literal["llm_nonmatch", "verified_only"]
+
+
+def queue_config(
+    negative_labels: NegativeLabels, seed: int = SEED
+) -> SelfCalibratingConfig:
     """Configuração PADRÃO atual da fila (humano, composites, 50 por rodada)."""
     return SelfCalibratingConfig(
         seed=seed,
-        negative_labels=negative_labels,  # type: ignore[arg-type]
+        negative_labels=negative_labels,
     )
 
 
@@ -1679,7 +1706,7 @@ def drive_queue(
     ex: Extract,
     reviewer: CachedParallelReviewer,
     *,
-    negative_labels: str,
+    negative_labels: NegativeLabels,
     workers: int,
     k_hot: int,
     k_cold: int,
@@ -1713,13 +1740,13 @@ def drive_queue(
             if deadline is not None and time.monotonic() > deadline:
                 raise RunTimeLimit(f"limite de {max_minutes} min desta execução")
             if session.awaiting_human:
-                decisions = {
+                decisions: dict[str, Decision] = {
                     it["pair_id"]: (
                         "MATCH" if ex.truth[pid_idx[it["pair_id"]]] else "NONMATCH"
                     )
                     for it in session.gate_items
                 }
-                session.submit_human_decisions(decisions)  # type: ignore[arg-type]
+                session.submit_human_decisions(decisions)
                 continue
             if session.phase == "reviewing" and last in (
                 "ordering",

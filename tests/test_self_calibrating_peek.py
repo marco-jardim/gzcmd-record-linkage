@@ -185,9 +185,11 @@ def test_peek_outside_reviewing_and_validation(data):
     _, truth = data
     session = new_session(data)
     assert session.peek_upcoming(3) == {}  # antes da primeira rodada
-    for bad in (0, -1, 1.5, True, "3"):
+    # valores inválidos DE PROPÓSITO: a validação ocorre em tempo de execução
+    invalid_values: tuple[Any, ...] = (0, -1, 1.5, True, "3")
+    for bad in invalid_values:
         with pytest.raises(ValueError):
-            session.peek_upcoming(bad)  # type: ignore[arg-type]
+            session.peek_upcoming(bad)
     while not session.awaiting_human:
         session.step()
     assert session.peek_upcoming(3) == {}  # no portão

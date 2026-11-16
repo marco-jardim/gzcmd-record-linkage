@@ -6,6 +6,7 @@ import itertools
 import math
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import exp_engenharia_filas as exp
 import numpy as np
@@ -21,8 +22,8 @@ from gzcmd_record_linkage.self_calibrating_queue import (
 N_SMALL = 3000
 
 
-def _cell(**kw: object) -> exp.Cell:
-    return exp.Cell(n=N_SMALL, **kw)  # type: ignore[arg-type]
+def _cell(**kw: Any) -> exp.Cell:
+    return exp.Cell(n=N_SMALL, **kw)
 
 
 def _auc(score: np.ndarray, y: np.ndarray) -> float:

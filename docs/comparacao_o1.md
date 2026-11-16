@@ -81,7 +81,7 @@ O fixture cobre pares guiados pela verdade (a amostra de calibração e as execu
 | 2000 | 190 | 9,5% | 31 | 15,0 | 468 (23,4%) | 31 |
 | 3000 | 253 | 8,4% | 36 | 20,0 | 576 (19,2%) | 36 |
 
-**A cobertura é baixa (8% a 18% da janela)**, então a comparação é **limitada**: o LLM só pode reordenar a fração coberta. No fixture bruto 100% dos positivos da janela estão cobertos contra 19% a 32% dos pares: a cobertura depende do rótulo. Resultado limpo, diferença contra a O1 (pares): W=500 +3,7 (B=50), +0,8 (96 e 100), +0,7, +0,2 e 0,0; W=1000 +5,3, +2,9, +3,0, +2,9, +2,4, +2,0; W=2000 +3,4, −1,5, −0,4, +5,7, +5,2, +5,0; W=3000 +2,4, −3,5, −3,1, +5,7, +5,2, +5,0 (B = 50, 96, 100, 200, 400, 800). O fixture bruto dá +11,4 e +5,9 (W=1000, B = 50 e 96), números inflados pela cobertura e **não** devem ser usados. Com a O1, o ganho do LLM é de 0 a +6 pares conforme W e B, não consistente em B = 96 (−3,5 a +2,9) e dependente de poucos pares cobertos.
+**A cobertura é baixa (8% a 18% da janela)**, então a comparação é **limitada**: o LLM só pode reordenar a fração coberta. No fixture bruto 100% dos positivos da janela estão cobertos contra 19% a 32% dos pares: a cobertura depende do rótulo. Resultado limpo, diferença contra a O1 (pares): W=500 +3,7 (B=50), +0,8 (96 e 100), +0,7, +0,2 e 0,0; W=1000 +5,3, +2,9, +3,0, +2,9, +2,4, +2,0; W=2000 +3,4, −1,5, −0,4, +5,7, +5,2, +5,0; W=3000 +2,4, −3,5, −3,1, +5,7, +5,2, +5,0 (B = 50, 96, 100, 200, 400, 800). O fixture bruto dá +11,4 e +5,9 (W=1000, B = 50 e 96), números inflados pela cobertura e **não** devem ser usados. Com a O1, o efeito do LLM vai de −3,5 a +5,7 pares (até +6) conforme W e B, inconsistente: negativo em B = 96 e 100 com W = 2.000 e 3.000, não consistente em B = 96 (−3,5 a +2,9) e dependente de poucos pares cobertos.
 
 ### 4.e A fila auto-calibrável existente contra a curva da O1
 
@@ -119,7 +119,7 @@ No pool `all` a O1 põe primeiro os 211 pares acima do corte (todos verdadeiros,
 2. **O ganho de S2 do extrato real some até B = 400 e encolhe em 800** (de +16 contra a O2 para +8 com a régua plana e +2,8 com a régua O1). Com a O1 o ganho que sobrevive é pequeno, só em B alto e dependente de a S2 usar a escala plana.
 3. **A fila auto-calibrável perde da O1 com margem maior**: 6,8 a 9,6 pares em B = 100 e 200 (taxas medidas e da tese) contra 0 a 2,5 da O2.
 4. **O bandit e as hipóteses sobre rendimento monotônico se mantêm** (S5 ≤ O1).
-5. **O LLM como desempate só pode ser avaliado com cobertura limitada** (8% a 18% da janela, limpa) e rende de 0 a +6; o fixture bruto inflaria o ganho (+11 em B = 50).
+5. **O LLM como desempate só pode ser avaliado com cobertura limitada** (8% a 18% da janela, limpa) e o efeito vai de −3,5 a +5,7 (até +6), inconsistente (negativo em B = 96 e 100 nas janelas de 2.000 e 3.000); o fixture bruto inflaria o ganho (+11 em B = 50).
 6. **A O1 é sensível ao desempate** (B = 50: 5 a 12; B = 200 e 400: 19 a 23), e a ordem do arquivo favorece a O1: relatar sempre a média e a faixa.
 7. **Em B = 50 a O1 não supera a O2** (8,7 contra 10 em média), onde a S2 com régua plana e o revisor perfeito ainda ganham (14; 16).
 

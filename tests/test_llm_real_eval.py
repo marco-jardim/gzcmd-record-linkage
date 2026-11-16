@@ -18,7 +18,12 @@ from test_self_calibrating_peek import make_data
 
 from gzcmd_record_linkage import llm_review
 from gzcmd_record_linkage.llm_dossier import DossierView, build_dossier
-from gzcmd_record_linkage.llm_review import AgentResponse, LLMCallError, ReviewResult
+from gzcmd_record_linkage.llm_review import (
+    AgentResponse,
+    LLMCallError,
+    ReviewResult,
+    ReviewVerdict,
+)
 from gzcmd_record_linkage.self_calibrating_queue import OracleReviewer
 
 SECRET = "sk-ant-SEGREDO-NAO-IMPRIMIR-123"
@@ -41,9 +46,9 @@ def views(n: int) -> list[DossierView]:
     return [lre.make_view(row(i)) for i in range(n)]
 
 
-def agent(decision: str = "MATCH") -> AgentResponse:
+def agent(decision: ReviewVerdict = "MATCH") -> AgentResponse:
     return AgentResponse(
-        decision=decision,  # type: ignore[arg-type]
+        decision=decision,
         confidence=0.8,
         reason_codes=["NAME_STRONG"],
         evidence_summary={
@@ -446,11 +451,16 @@ class RichFakeReviewer:
 
     def review(self, dossier: DossierView) -> ReviewResult:
         k = int(dossier.pair_id, 16)
-        decision = ("MATCH", "NONMATCH", "UNSURE")[k % 3]
+        verdicts: tuple[ReviewVerdict, ReviewVerdict, ReviewVerdict] = (
+            "MATCH",
+            "NONMATCH",
+            "UNSURE",
+        )
+        decision = verdicts[k % 3]
 
-        def ag(d: str, conf: float) -> AgentResponse:
+        def ag(d: ReviewVerdict, conf: float) -> AgentResponse:
             return AgentResponse(
-                decision=d,  # type: ignore[arg-type]
+                decision=d,
                 confidence=conf,
                 reason_codes=["NAME_STRONG", "DOB_MATCH"],
                 evidence_summary={
@@ -466,14 +476,14 @@ class RichFakeReviewer:
             )
 
         arbiter = k % 2 == 0
-        other = "NONMATCH" if decision == "MATCH" else "MATCH"
+        other: ReviewVerdict = "NONMATCH" if decision == "MATCH" else "MATCH"
         a = ag(decision, 0.7)
         b = ag(other if arbiter else decision, 0.6)
         arb = ag(decision, 0.9) if arbiter else None
         self.usage_log.extend([{"input_tokens": 1, "output_tokens": 1}] * 2)
         return ReviewResult(
             pair_id=dossier.pair_id,
-            decision=decision,  # type: ignore[arg-type]
+            decision=decision,
             confidence=0.9 if arbiter else 0.7,
             reason_codes=["NAME_STRONG", "DOB_MATCH"],
             evidence_summary=a.evidence_summary,
