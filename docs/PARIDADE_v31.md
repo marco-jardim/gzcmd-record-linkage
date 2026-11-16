@@ -173,6 +173,26 @@ perfil histórico. O treinamento OOF aninhado está disponível na rota `ml_xgb`
 continua v3 por padrão porque suas métricas esperadas têm três ações; com
 `--policy-version` explícito, ações fora das três históricas contam como indecisas.
 
+## Métodos experimentais fora da tese
+
+Estes módulos não têm contrapartida na tese e não foram avaliados nela. Nada
+desta seção altera a paridade da v3.1: `run_v3` e todos os padrões existentes
+permanecem inalterados.
+
+| Função da tese | Arquivo do pacote | Status/observação |
+| :--- | :--- | :--- |
+| — (não existe na tese) | `self_calibrating_queue.py` (`SelfCalibratingSession`, `SelfCalibratingConfig`, `OracleReviewer`, `run_self_calibrating`) | experimental, não avaliado na tese; aditivo, fora do run_v3. Fila de revisão auto-calibrável sem padrão-ouro; o modo automático emite `ExperimentalWarning`; `SelfCalibratingSession.peek_upcoming(n_per_arm)` (só leitura) devolve os próximos pares de cada braço |
+| — (não existe na tese) | `fellegi_sunter.py` | experimental, não avaliado na tese; aditivo, fora do run_v3. Fellegi-Sunter por EM, sem rótulos |
+| — (não existe na tese) | `field_recalibrator.py` | experimental, não avaliado na tese; aditivo, fora do run_v3. Logística MAP multicampo |
+| — (não existe na tese) | `notebooks/llm_real_eval.py` (harness de avaliação com LLM real; fora do pacote) | experimental, fora do run_v3. Mede o Haiku real (prompt v4, sem a nota) por faixa, roda a fila ponta a ponta e o desempate abaixo do corte; relatórios agregados em `docs/llm_real_*.md`. As taxas medidas são da variante **sem nota** (uma realização, amostra estratificada) e **não substituem** as da tese nem as de `error_rates_by_band_v4.yaml` |
+
+Extensões aditivas de módulos já existentes, também sem contrapartida na tese:
+`ranking.ThompsonQueue(input_kind="partial_orders", n_items=...)` com
+`to_state`/`from_state`, `arm_stats`, `exhausted`, `arm_of` e `mark_seen`;
+`LoadConfig(require_par=False)`; `DossierView(remove_fields=...)` e a constante
+`DOSSIER_SOURCE_COLUMNS` de `llm_dossier`. Os
+comportamentos anteriores dessas APIs não mudam.
+
 ## Evidência reproduzível
 
 ```console

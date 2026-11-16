@@ -23,12 +23,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
 import pandas as pd
 
 __all__ = [
+    "DOSSIER_SOURCE_COLUMNS",
     "Dossier",
     "DossierFeatures",
     "DossierModelOutputs",
@@ -101,6 +103,32 @@ _MACD_COLS = [
     "macd_nome_perf_x_year_diff",
 ]
 
+# Columns ``build_dossier`` reads from a row (features and model outputs; the
+# pair ID columns are not listed). A caller that fingerprints its input should
+# resolve each name like ``_resolve_col`` does (a ``",Type"`` suffix is accepted).
+DOSSIER_SOURCE_COLUMNS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        (
+            "nota final",
+            "nota_final",
+            *_NAME_COLS,
+            *_MOTHER_COLS,
+            *_DOB_COLS,
+            *_ADDRESS_COLS,
+            _MUNICIPALITY_COL,
+            *_COMPOSITE_COLS,
+            *_FLAG_COLS,
+            *_MACD_COLS,
+            "p_cal",
+            "band",
+            "base_choice",
+            "evr",
+            "guardrail",
+            "guardrail_reason",
+        )
+    )
+)
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -154,6 +182,25 @@ class Dossier:
         return json.dumps(self.to_dict(), ensure_ascii=False, **kwargs)
 
 
+def _remove_dotted(payload: dict[str, Any], path: str) -> None:
+    """Delete the dotted *path* (e.g. ``"features.nota_final"``) from *payload*.
+
+    Raises ``ValueError`` for a malformed path (empty or with an empty
+    component) and ``KeyError`` when the path does not exist.
+    """
+    parts = path.split(".") if isinstance(path, str) else []
+    if not parts or any(not part for part in parts):
+        raise ValueError(f"Malformed field path: {path!r}")
+    node: Any = payload
+    for part in parts[:-1]:
+        if not isinstance(node, dict) or part not in node:
+            raise KeyError(f"Field path not found in dossier: {path}")
+        node = node[part]
+    if not isinstance(node, dict) or parts[-1] not in node:
+        raise KeyError(f"Field path not found in dossier: {path}")
+    del node[parts[-1]]
+
+
 class DossierView:
     """Serialization-only view of a :class:`Dossier`.
 
@@ -164,13 +211,26 @@ class DossierView:
     runs. It exposes the ``pair_id`` / ``to_json`` interface the reviewers use.
     ``Dossier`` and ``SCHEMA_VERSION`` are unchanged; ``schema_version`` stays
     in the payload.
+
+    ``remove_fields`` drops further fields, given as dotted paths relative to
+    the payload (``"features.nota_final"``, ``"model_outputs.p_cal"``), after
+    ``remove_model_outputs`` is applied. Strict: a malformed path raises
+    ``ValueError`` and a missing one ``KeyError``.
     """
 
-    def __init__(self, dossier: Dossier, remove_model_outputs: bool = False) -> None:
+    def __init__(
+        self,
+        dossier: Dossier,
+        remove_model_outputs: bool = False,
+        *,
+        remove_fields: Sequence[str] = (),
+    ) -> None:
         self.pair_id = dossier.pair_id
         self.payload = dossier.to_dict()
         if remove_model_outputs:
             self.payload.pop("model_outputs", None)
+        for path in remove_fields:
+            _remove_dotted(self.payload, path)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a copy of the (possibly ablated) payload."""

@@ -1,5 +1,121 @@
 # Changelog
 
+## 0.7.0 (não publicada)
+
+Método **experimental**: a fila de revisão auto-calibrável não existe na tese nem
+na 0.6.1 e **não é recomendada para uso em produção**. Na simulação offline sobre
+o extrato da tese ela não tem vantagem sobre a ordenação pela nota (abaixo do
+corte, em 1.300 revisões: 7,2 contra 10,9 dos 36 pares PAR = 2). Com o Haiku real
+(uma realização, humano simulado perfeito), a fila também não superou as bases:
+com ~127 decisões humanas verificou 4 dos 36 pares abaixo do corte, contra 10 de
+nota + LLM com humano confirmando os MATCH e 9 do humano sozinho na ordem da
+nota. Todas as mudanças são aditivas: `run_v3` e todos os
+defaults existentes permanecem inalterados.
+
+Adicionado:
+
+- `self_calibrating_queue.py`: revisão sem padrão-ouro (a sessão nunca lê `PAR`
+  nem `TARGET`) sobre a saída ORL + CdR.
+  - `SelfCalibratingSession`: sessão passo a passo (`step()` devolve exatamente
+    um `SessionEvent`); `SelfCalibratingConfig`; eventos serializáveis em JSON
+    (`ordering`, `pair_presented`, `agent_verdict`, `final_verdict`,
+    `review_error`, `round_stopped`, `gate_opened`, `human_decision`,
+    `holdout_built`, `alarm`, `recalibration`, `reordering`, `run_finished`);
+    estado em `to_state()`/`from_state()`; `results()`, `summary()`,
+    `holdout()`, `current_model`, `feature_names`. `run_self_calibrating`: laço
+    de conveniência.
+  - Ordem: faixas por **posto** de `p_cur` entre os pares não revisados no início
+    da rodada (`band_rank_edges=(0.01, 0.05, 0.20)`), cada faixa consumida **do
+    topo para baixo**, escolhida por um bandit de Thompson; braço de exploração
+    fora do bandit e da regra de parada (`explore_every=10`, `0` desliga). A 1ª
+    rodada ordena pela nota calibrada; depois, o modelo vigente (prior
+    Fellegi-Sunter ajustado uma vez na inicialização e, com rótulos suficientes,
+    a logística MAP).
+  - Portão humano (`mode="human"`, padrão): a sessão pausa em `awaiting_human`
+    até `submit_human_decisions(...)`, que exige uma decisão (`"MATCH"`,
+    `"NONMATCH"` ou `"SKIP"`) para **todo** item; não há confirmação implícita.
+    Orçamento humano (`human_budget_per_round=50`, `human_budget_total=None`),
+    com prioridade MATCH do LLM (por `p_cur`), UNSURE (`gate_include_unsure`) e
+    auditoria; o excedente fica `over_budget`, sem rótulo, e o orçamento total
+    esgotado encerra o run (`human_budget`). Auditoria por posto
+    (`audit_rank_fraction=0.05`, `nonmatch_audit_n=10`) com alarme informativo
+    (`audit_match_found`, verificação de sanidade sem poder estatístico).
+    `llm_match_unverified` vale para todo MATCH do LLM sem decisão humana. No
+    modo humano um positivo exige MATCH humano; negativos por `negative_labels`
+    (`"llm_nonmatch"` ou `"verified_only"`).
+  - Holdout acumulado com pesos por estrato (`r{r}:top`, peso 1; `r{r}:explore`,
+    peso N/n_e) e teto `weight_max_ratio`, que troca viés por variância.
+  - Campos (`field_set`): os 5 compostos do loader (padrão) ou os 29 sub-escores
+    do CdR + `mae_missing` (`"cdr_subscores"`, experimental: no extrato da tese o
+    FS sem rótulos dá prevalência 0,49 e a simulação foi pior).
+  - Modo automático (`mode="auto"`): exige opt-in explícito e emite
+    `ExperimentalWarning`; a saída é marcada `llm_match_unverified`. Guarda de
+    região dominante: com `auto_low_conf_policy="exclude"` e mais de
+    `auto_max_low_conf_fraction` (padrão 0.5) dos pares na região de baixa
+    confiança, o run não aprende (`recalibration` com
+    `status="skipped_low_conf_dominant"`, ordem pelo prior Fellegi-Sunter, um
+    `alarm` `low_confidence_dominant` na rodada 1).
+  - Validações de entrada: `SCORE` resolvido com sufixo `,Tipo` e vírgula
+    decimal; `remove_fields` rejeita `str` e duplicatas e é validado na criação
+    da sessão (dossiê da 1ª linha); a impressão digital cobre as colunas que o
+    dossiê lê (`DOSSIER_SOURCE_COLUMNS`); a configuração aceita inteiros numpy;
+    `zero_match_reviews_needed` é exato.
+  - `OracleReviewer`: revisor simulado determinístico, sem rede, para testes e
+    simulações.
+- `fellegi_sunter.py`: discretização dos campos (compostos ou sub-escores do CdR)
+  e Fellegi-Sunter por EM, sem rótulos (prior da recalibração). Os sub-escores do
+  mesmo campo são correlacionados: a independência condicional é violada e os
+  pesos do prior ficam inflados.
+- `field_recalibrator.py`: logística MAP multicampo, com prior, limites e pesos;
+  o modelo-prior (`as_recalibration`) é projetado nos limites (coeficientes de
+  concordância ≥ 0 e caixa de confiança), como o ponto inicial do ajuste.
+- APIs aditivas em módulos existentes:
+  - `ranking.ThompsonQueue(input_kind="partial_orders", n_items=...)`, mais
+    `to_state`/`from_state`, `arm_stats`, `exhausted`, `arm_of` e
+    `mark_seen(item)` (marca como visto um item não pendente, para os braços o
+    pularem; idempotente; entra no estado);
+  - `loader.LoadConfig(require_par=False)` (sem `PAR` não cria `TARGET`);
+  - `llm_dossier.DossierView(remove_fields=...)` e a constante pública
+    `DOSSIER_SOURCE_COLUMNS`.
+- Plano de desenho e limitações conhecidas: `docs/plans/fila-autocalibravel.md`.
+- Simulação offline da fila auto-calibrável sobre o extrato da tese, com revisor
+  sintético por faixa de nota (`BandedOracle`) e humano simulado, sem rede e sem
+  LLM real, comparada a bases de mesmo orçamento (nota, Fellegi-Sunter,
+  aleatória): `notebooks/sim_fila_autocalibravel.py`,
+  `tests/test_sim_fila_autocalibravel.py`, relatório
+  `docs/sim_fila_autocalibravel.md` e agregados
+  `docs/sim_fila_autocalibravel_resultados.csv` (só agregados, sem dado por par;
+  não é avaliação com LLM real). A simulação v3 inclui as bases de esforço
+  humano (H0 humano sozinho, H1 nota + LLM tria + humano confirma MATCH, H2 a
+  fila), a grade de `negative_labels` × `human_budget_per_round` e o terceiro
+  revisor opcional `--rates-csv`. Os resultados das versões anteriores do
+  desenho ficam em `docs/sim_fila_autocalibravel_v2.md`,
+  `docs/sim_fila_autocalibravel_v1.md` e nos CSVs `..._resultados_v2.csv` e
+  `..._resultados_v1.csv`.
+- `SelfCalibratingSession.peek_upcoming(n_per_arm)`: os próximos `pair_id` que
+  cada braço apresentaria (faixas e exploração), só leitura (`to_state()` não
+  muda); serve para pré-buscar revisões em paralelo.
+- Harness de avaliação com LLM real (experimental, fora do `run_v3`; não é
+  importado pelo pacote): `notebooks/llm_real_eval.py`, com os subcomandos
+  `pilot`, `calibrate`, `report` (taxas por faixa), `queue-run` e `queue-report`
+  (fila ponta a ponta), `baseline` (bases H1 e H0), `export-fixture` e
+  `rerank-test` (LLM como desempate abaixo do corte), e `FixtureReviewer`, que
+  reaplica sem rede as decisões gravadas. A chave é lida só pelo harness, de
+  `ANTHROPIC_API_KEY_ALT` no `.env` (ignorado pelo git); as decisões reais ficam
+  num fixture local em `data/llm_fixtures/` (ignorado pelo git).
+- Relatórios agregados (sem dado por par) com o Haiku real, prompt v4 e sem a
+  nota: `docs/llm_real_haiku_sem_nota.md` (taxas: FP 0,4% [0,1–1,5%], FN 18,2%
+  [13,9–23,5%]; abaixo do corte, FN 44,4% [29,5–60,4%], 16 de 36),
+  `docs/llm_real_fila_ponta_a_ponta.md` e
+  `docs/llm_real_desempate_zona_cinza.md` (ganho só com ~400 decisões humanas:
+  +5 e +6 de 36 nas janelas de 2.000 e 3.000; uma realização, evidência fraca).
+
+Alterado:
+
+- Versão do pacote: 0.7.0 (`pyproject.toml`). Nenhum comportamento existente
+  muda; os padrões de `LoadConfig` e `DossierView` e todo o caminho de `run_v3`
+  são os mesmos.
+
 ## 0.6.1 (2026-11-14)
 
 Documentação: README atualizado para as capacidades da 0.5.0/0.6.0. Nenhuma

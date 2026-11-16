@@ -33,7 +33,7 @@ mecanismos implementados:
 - Importação Python: `gzcmd_record_linkage`
 - Licença: [MIT](LICENSE)
 - Python: 3.10 ou superior
-- Versão no repositório: **0.6.1** (publicada no PyPI em 2026-11-14)
+- Versão no repositório: **0.7.0 (não publicada; a última no PyPI é a 0.6.1)**
 - Versão mais recente no PyPI: **0.6.1** (publicadas: 0.1.0, 0.3.0, 0.4.0, 0.4.1, 0.4.2, 0.6.0 e 0.6.1;
   a 0.5.0 nunca foi publicada e seu conteúdo está incluído na 0.6.0; a 0.6.1
   altera somente a documentação)
@@ -257,6 +257,18 @@ de ordem, mas cada item só pode ser atualizado uma vez. A classe não lê
 gabaritos nem executa revisão externa. Diferentemente das funções de fusão,
 ela mantém estado local entre chamadas, sem I/O.
 
+Extensões aditivas (usadas pela fila auto-calibrável, experimental):
+`input_kind="partial_orders"` com `n_items=N` aceita uma lista de IDs por braço,
+de tamanhos diferentes e possivelmente sobrepostas (um item reservado por um braço
+é pulado pelos outros; o braço sem item livre fica esgotado e não é sorteado);
+`mark_seen(item)` marca como visto um item não pendente, sem reservá-lo por braço
+algum e sem recompensa (idempotente; `ValueError` se estiver pendente ou fora do
+intervalo); `to_state()` devolve o estado completo em tipos JSON (inclusive o RNG e
+os itens marcados) e `ThompsonQueue.from_state(estado)` restaura uma fila que
+continua a mesma sequência; `arm_stats()` (sucessos e tentativas na janela, por
+braço), `exhausted()` (por braço) e `arm_of(item)` são consultas somente de leitura.
+Os comportamentos anteriores não mudam.
+
 ## Filas de revisão
 
 Além de `rrf`, `interleave`, `review_queue` e `ThompsonQueue`, o módulo
@@ -476,6 +488,234 @@ grupo `model_outputs` (`p_cal`, `band`, `base_choice`, `evr`, `guardrail`,
 `sem_mo`); não as aplique a outra configuração. O pacote não embute tarifas nem
 limites de custo; `AnthropicReviewer` lê também um `.env`, se `python-dotenv`
 estiver instalado.
+
+### Fila auto-calibrável (experimental)
+
+> **Experimental, não recomendado para uso em produção.** Este método **não foi
+> avaliado na tese** e **não existe na 0.6.1** (a 0.7.0 não foi publicada). É
+> aditivo: `run_v3` e todos os padrões existentes permanecem
+> inalterados. Os resultados com LLM real (uma realização, humano simulado) estão
+> resumidos em "Resultados com LLM real", abaixo. Há também uma simulação
+> offline, com revisor sintético e humano simulado, sobre o extrato da tese:
+> [docs/sim_fila_autocalibravel.md](docs/sim_fila_autocalibravel.md) (dados
+> agregados em `docs/sim_fila_autocalibravel_resultados.csv`; script em
+> `notebooks/sim_fila_autocalibravel.py`). As versões anteriores do desenho estão
+> preservadas em [docs/sim_fila_autocalibravel_v2.md](docs/sim_fila_autocalibravel_v2.md)
+> e [docs/sim_fila_autocalibravel_v1.md](docs/sim_fila_autocalibravel_v1.md).
+>
+> **Resultado da simulação (v3): sem vantagem sobre a ordenação pela nota, e sem
+> encurtar o trabalho humano.** Com o revisor sintético (`thesis_bands`) e o
+> humano simulado perfeito, abaixo do corte da tese a fila achou 7,8 dos 36 pares
+> PAR = 2 em 1.350 revisões contra 11,0 da ordenação pela nota; no extrato inteiro,
+> em 2.000 revisões, a fila achou 14,4, a nota 12,0 e o Fellegi-Sunter sobre os
+> compostos 15,9. A orçamento humano igual, abaixo do corte, a fila verifica menos
+> pares que o humano sozinho na ordem da nota (9,5 contra 12,0 em 100 decisões);
+> só com revisor perfeito a triagem do LLM encurta a revisão (k = 10 pares em 10
+> decisões contra 24). Detalhes e limitações em
+> [docs/sim_fila_autocalibravel.md](docs/sim_fila_autocalibravel.md).
+
+**Resultados com LLM real (Claude Haiku, prompt v4, sem a nota).** Medições
+agregadas, sem dado por par, com humano simulado **perfeito** (decide pelo `PAR`),
+**uma única realização** do LLM (temperatura padrão) e apenas 36 pares verdadeiros
+abaixo do corte. A fila **não superou as bases** (nota e humano sozinho).
+
+- **Taxas medidas** ([docs/llm_real_haiku_sem_nota.md](docs/llm_real_haiku_sem_nota.md)):
+  717 pares (todos os 247 verdadeiros e 470 não pares). Falso positivo 0,4% [IC
+  95% 0,1–1,5%]; falso negativo 18,2% [13,9–23,5%], e abaixo do corte da tese
+  44,4% [29,5–60,4%] (16 de 36). São taxas da variante **sem nota** e não
+  substituem as da tese nem as de `error_rates_by_band_v4.yaml`.
+- **Fila ponta a ponta** ([docs/llm_real_fila_ponta_a_ponta.md](docs/llm_real_fila_ponta_a_ponta.md)):
+  com ~127 decisões humanas (política `llm_nonmatch`; 128 em `verified_only`, mesmo
+  resultado), a fila verificou 4 dos 36 pares abaixo do corte; a base nota + LLM
+  com o humano confirmando os MATCH verificou 10 e o humano sozinho na ordem da
+  nota, 9. No total de verdadeiros verificados, 96 (fila), 106 e 113 (bases).
+- **LLM como desempate na zona cinza** ([docs/llm_real_desempate_zona_cinza.md](docs/llm_real_desempate_zona_cinza.md)):
+  reordenar os pares abaixo do corte pelo veredito do LLM só rende com ~400
+  decisões humanas: +5 e +6 verdadeiros de 36 nas janelas de 2.000 e 3.000
+  revisões do LLM (L1 e L3). O IC por bootstrap exclui zero só nesses casos (4 de
+  48 combinações). É uma realização do LLM: evidência fraca; diferenças de 1–3
+  pares são ruído.
+- A simulação com as taxas da vigilância está em
+  [docs/sim_fila_autocalibravel.md](docs/sim_fila_autocalibravel.md).
+
+O harness é `notebooks/llm_real_eval.py` (`pilot`, `calibrate`, `report`,
+`queue-run`, `baseline`, `export-fixture`, `rerank-test`). Só ele lê a chave, de
+`ANTHROPIC_API_KEY_ALT` no `.env` (ignorado pelo git); o pacote não a usa. As
+decisões reais ficam num fixture local em `data/llm_fixtures/` (ignorado pelo git),
+que o `FixtureReviewer` do harness reaplica sem rede. Para pré-buscar revisões em
+paralelo, `SelfCalibratingSession.peek_upcoming(n_per_arm)` devolve, sem alterar o
+estado, os próximos `pair_id` de cada braço.
+
+Revisa potenciais pares da saída ORL + CdR **sem padrão-ouro**: a sessão nunca lê
+`PAR` nem `TARGET`. A nota final (`nota final`) só ordena a primeira rodada. Na
+inicialização, o prior vem de um modelo de Fellegi-Sunter ajustado **uma vez** por
+EM, sem rótulos (`fellegi_sunter`), sobre os campos discretizados (por padrão os 5
+compostos do loader, `field_set="composites"`; `field_set="cdr_subscores"`, os 29
+sub-escores do CdR mais `mae_missing`, é experimental e pior na simulação: no
+extrato da tese o FS dos sub-escores dá prevalência 0,49, inválida como prior).
+Os sub-escores do mesmo campo são fortemente correlacionados: a independência
+condicional do FS é violada e os pesos do prior ficam inflados; o recalibrador
+ajusta os pesos com rótulos, e na simulação isso não bastou. Em cada rodada:
+
+1. o modelo vigente (o prior FS e, depois da primeira recalibração, a logística
+   MAP) ordena os pares ainda não revisados;
+2. um *bandit* de Thompson (`ThompsonQueue`) escolhe de qual faixa de **posto**
+   consumir (`band_rank_edges`: topo 1%, 1–5%, 5–20% e o resto, pelos quantis de
+   posto de `p_cur` entre os não revisados), e cada faixa é lida **do topo para
+   baixo**; um braço de exploração, fora do bandit, revisa um par aleatório a
+   cada `explore_every` revisões;
+3. o revisor LLM (dois agentes e um árbitro) julga par a par;
+4. ao fim da rodada, um portão (humano ou automático) fecha um *holdout*
+   acumulado, ponderado por estrato (`top`, peso 1; `explore`, peso N/n_e, com
+   teto `weight_max_ratio`; ver as limitações em
+   [docs/plans/fila-autocalibravel.md](docs/plans/fila-autocalibravel.md));
+5. a logística MAP multicampo (`field_recalibrator`) é reajustada sobre o
+   *holdout* (a nota não entra) e os pares restantes são reordenados.
+
+Exemplo mínimo (modo humano, o recomendado):
+
+```python
+from gzcmd_record_linkage.anthropic_transport import AnthropicReviewer
+from gzcmd_record_linkage.loader import LoadConfig, load_comparador_csv
+from gzcmd_record_linkage.self_calibrating_queue import (
+    SelfCalibratingConfig,
+    SelfCalibratingSession,
+)
+
+df = load_comparador_csv("comparador.csv", cfg=LoadConfig(require_par=False))
+sessao = SelfCalibratingSession(
+    df, AnthropicReviewer.from_env(prompt_version="v4"), SelfCalibratingConfig()
+)
+while not sessao.finished:
+    if sessao.awaiting_human:  # evento gate_opened com awaiting=True
+        # cada item: pair_id, kind ("match"/"unsure"/"audit"), llm_decision, ...
+        # decida TODOS os itens: "MATCH", "NONMATCH" ou "SKIP" (item faltando = erro)
+        decisoes = {
+            item["pair_id"]: decidir(item)  # sua revisão humana
+            for item in sessao.gate_items
+        }
+        sessao.submit_human_decisions(decisoes)
+        continue
+    evento = sessao.step()  # exatamente um SessionEvent por chamada
+    print(evento.seq, evento.round, evento.kind)
+resultado = sessao.results()  # uma linha por par revisado
+```
+
+`sessao.gate_items` lista os itens do portão, e **não há confirmação
+implícita**: `submit_human_decisions` exige uma decisão para todo item
+(`"MATCH"`, `"NONMATCH"` ou `"SKIP"`; um item faltando levanta `ValueError`).
+`"SKIP"` deixa o item sem decisão (`human_decision_source="human_skip"`) e fora do
+*holdout*. **Orçamento humano:** os candidatos entram no portão em ordem de
+prioridade (MATCH do LLM por `p_cur` decrescente, depois UNSURE se
+`gate_include_unsure`, depois a amostra de auditoria) até `human_budget_per_round`
+(50); o excedente fica `human_decision_source="over_budget"`, sem rótulo e fora do
+*holdout*, e se `human_budget_total` se esgota o run termina com motivo
+`human_budget`. Um MATCH do LLM só deixa de ser `llm_match_unverified` com decisão
+humana. No modo humano, um rótulo positivo exige MATCH humano; os negativos
+seguem `negative_labels` (`"llm_nonmatch"`: NONMATCH humano e NONMATCH do LLM
+não auditado; `"verified_only"`: só NONMATCH humano). Atalho que roda a sessão até
+o fim e devolve `(resultados, resumo, eventos)`: `run_self_calibrating(df,
+revisor, config, human_callback=...)`; o modo humano exige `human_callback`, que
+recebe os itens do portão e devolve o mapa `pair_id -> decisão` **para todos os
+itens**. `OracleReviewer` é um revisor
+simulado, sem rede, para testes. A sessão é serializável: `to_state()` e
+`SelfCalibratingSession.from_state(estado, df, revisor)` (valida a impressão
+digital do DataFrame; o log de eventos não entra no estado, e a sessão
+restaurada continua a numeração `seq`).
+
+**Exploração.** O braço de exploração (ordem aleatória sobre os não revisados
+no início da rodada) não entra na regra de parada nem na recompensa do bandit;
+o `pair_presented` diz `arm="explore"`. As revisões de exploração contam para
+`max_round_reviews`, `max_reviews` e para os erros seguidos.
+
+**Parada da rodada.** Para cada braço (faixa) não esgotado, com `s_k` MATCH em
+`n_k` das últimas `window` (W) revisões do braço, θ_k ~ Beta(1 + s_k, 1 + n_k − s_k).
+A rodada para quando
+
+    max_k P(θ_k > τ) < δ
+
+(cálculo exato, sobre **todos** os braços não esgotados). Sem nenhum MATCH, a
+regra só dispara quando **cada** braço não esgotado já tem
+n\* = menor n com (1 − τ)^(n+1) < δ revisões sem MATCH (58 com τ = δ = 0,05). A
+rodada também para se todos os braços se esgotarem, em `max_round_reviews`, em
+`max_reviews` ou por `max_consecutive_errors` erros seguidos do LLM. A
+recompensa e a parada usam o MATCH bruto do LLM (ver as limitações).
+
+**Término do run**, após o portão e a recalibração de cada rodada: `max_reviews`;
+`human_budget` (orçamento humano total esgotado); fila esgotada; `max_rounds`; rodada estéril (positivos novos no *holdout* abaixo
+de `min_new_positives`); alarme de anomalia (`auto_anomaly`, só no modo
+automático); `max_consecutive_errors` erros seguidos do LLM. Erros do LLM ficam
+com `llm_decision="ERROR"` e contam recompensa 0.
+
+Parâmetros principais de `SelfCalibratingConfig` (padrões do código):
+
+| Parâmetro | Padrão | Significado |
+| :--- | :--- | :--- |
+| `mode` | `"human"` | `"human"` ou `"auto"` (opt-in; emite `ExperimentalWarning`) |
+| `seed` | `42` | Semente única; desempates por `pair_id` |
+| `tau` | `0.05` | τ da regra de parada |
+| `delta` | `0.05` | δ da regra de parada |
+| `window` | `100` | Janela W de revisões por braço |
+| `field_set` | `"composites"` | Campos do FS e do recalibrador: os 5 compostos do loader, ou `"cdr_subscores"` (29 sub-escores do CdR + `mae_missing`; experimental, pior na simulação) |
+| `band_rank_edges` | `(0.01, 0.05, 0.20)` | Quantis de posto de `p_cur` (entre os não revisados no início da rodada) que delimitam as faixas: topo 1%, 1–5%, 5–20%, resto; estritamente crescentes em (0, 1) |
+| `explore_every` | `10` | A cada `explore_every` revisões do run a próxima vem do braço de exploração (aleatório, fora do bandit e da regra de parada); `0` desliga |
+| `max_round_reviews` | `500` | Máximo de revisões por rodada |
+| `max_reviews` | `2000` | Máximo de revisões no run |
+| `max_rounds` | `5` | Máximo de rodadas |
+| `min_new_positives` | `1` | Positivos novos mínimos para não ser rodada estéril |
+| `nonmatch_audit_n` | `10` | NONMATCH auditados por rodada no portão humano (verificação de sanidade, sem poder estatístico) |
+| `human_budget_per_round` | `50` | Itens por portão humano; o excedente fica `over_budget` (sem rótulo). `None` = sem limite; deve ser > 0 |
+| `human_budget_total` | `None` | Itens humanos no run inteiro; esgotado, o run termina com motivo `human_budget`. `None` = sem limite; deve ser > 0 |
+| `gate_include_unsure` | `True` | UNSURE do LLM entram no portão (depois dos MATCH) |
+| `negative_labels` | `"llm_nonmatch"` | Rótulos 0 no modo humano: `"llm_nonmatch"` (NONMATCH humano + NONMATCH do LLM não auditado) ou `"verified_only"` (só NONMATCH humano) |
+| `audit_rank_fraction` | `0.05` | Fração superior do posto de `p_cur` (no início da rodada) cujos NONMATCH entram na auditoria |
+| `weighting` | `"stratum_ipw"` | Pesos por estrato e rodada (`top`: N_h = n_h, peso 1; `explore`: N/n_e, N = não revisados no início da rodada), ou `"none"` |
+| `weight_max_ratio` | `10.0` | Razão máxima entre o maior e o menor peso: w = min(w_h, R · min_h w_h), restrito ao holdout e normalizado para média 1; o teto troca viés por variância |
+| `min_labeled`, `min_per_class` | `20`, `3` | Mínimos para reajustar o modelo |
+| `auto_max_low_conf_fraction` | `0.5` | No auto com política `"exclude"`: se a fração de pares na região de baixa confiança passar deste limite (0 < x ≤ 1), o run não aprende (recalibração `skipped_low_conf_dominant`, ordem pelo prior Fellegi-Sunter); `1.0` desliga a guarda |
+| `auto_low_conf_policy` | `"exclude"` | Região de baixa confiança no auto; `"soft"` usa `auto_low_conf_match_label` (`0.16`) |
+| `anomaly_ratio`, `anomaly_min_matches` | `3.0`, `5` | Alarme de anomalia (modo automático) |
+| `max_consecutive_errors` | `3` | Erros seguidos do LLM para encerrar |
+| `remove_fields` | `("features.nota_final",)` | Campos removidos do dossiê (o prompt trata `nota_final` como "se presente") |
+
+O desvio-padrão do prior da logística é 1,0 (coeficientes) e 2,0 (intercepto) no
+modo humano, e 0,5 e 1,0 no automático (`sd_coef`, `sd_intercept`); só no
+automático há limite de deslocamento em torno do prior (`trust_coef` 1,0,
+`trust_intercept` 2,0). Coeficientes de concordância são restritos a ≥ 0.
+
+Tipos de evento (`SessionEvent(seq, round, kind, payload)`): `ordering`,
+`pair_presented`, `agent_verdict`, `final_verdict`, `review_error`,
+`round_stopped`, `gate_opened`, `human_decision`, `holdout_built`, `alarm`,
+`recalibration`, `reordering`, `run_finished`. O portão sem itens não pausa
+(`gate_opened` com `awaiting=False`). Numa anomalia, o evento `recalibration`
+traz `reverted=True` e em seguida vem `run_finished` com motivo `auto_anomaly`.
+
+**Salvaguardas do modo automático** (`mode="auto"`): opt-in explícito com
+`ExperimentalWarning`; só MATCH por consenso entra como positivo (MATCH decidido
+pelo árbitro é excluído do *holdout*); vereditos na região de baixa confiança
+(abaixo do corte da tese, por `below_cutoff`, ou coluna `auto_low_confidence`, ou
+nota em [5; 8)) ficam fora do *holdout*; prior apertado com limite de
+deslocamento; alarme de anomalia que reverte o modelo e encerra o run; saída
+marcada `llm_match_unverified` (o *holdout* calibra e ordena, nunca aceita
+vínculo). A cautela se justifica: a tese mediu VPP de 16,0% (4 de 25; IC 95%
+6,4%–34,7%) para o LLM como aceitador abaixo do corte na vigilância, com a nota
+visível. Esta variante **oculta a nota**, então nem esse número nem as taxas de
+`error_rates_by_band_v4.yaml` se aplicam diretamente a ela.
+
+**Limitação conhecida.** No modo automático, quando a região de baixa confiança é
+dominante (mais de `auto_max_low_conf_fraction=0.5` dos pares; no extrato da tese,
+99,66% ficam abaixo do corte), o método **não aprende**: o *holdout* continua
+sendo montado e emitido a cada rodada, mas a recalibração não ajusta nada
+(evento `recalibration` com `status="skipped_low_conf_dominant"`), um único
+`alarm` com `reason="low_confidence_dominant"` sai na rodada 1 e, da rodada 2 em
+diante, a ordem é a do prior Fellegi-Sunter (a nota só ordena a rodada 1). O
+evento `ordering` informa `low_conf_fraction`, `auto_max_low_conf_fraction` e
+`auto_learning_enabled`. O rótulo fracionário
+(`auto_low_conf_policy="soft"`, a guarda não se aplica) é opt-in e usa um VPP
+medido com a nota visível, que esta variante oculta. O modo humano (em que a
+máscara de baixa confiança não é usada e a guarda não se aplica) é o recomendado.
+
+Desenho completo: [docs/plans/fila-autocalibravel.md](docs/plans/fila-autocalibravel.md).
 
 ### Rota `ml_xgb` de `p_cal` e atributos permitidos
 

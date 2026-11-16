@@ -22,13 +22,14 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
 InputKind = Literal["orders", "scores"]
+QueueInputKind = Literal["orders", "scores", "partial_orders"]
 TieBreak = Literal["index", "random"]
 QueueTieBreak = Literal["pair_id", "index", "random"]
 Order = NDArray[np.int64]
@@ -199,6 +200,83 @@ def interleave(
     return np.asarray(result, dtype=np.int64)
 
 
+def _partial_orders(rankings: Sequence[ArrayLike], n_items: int) -> list[Order]:
+    """Validate partial orders: unique integer item IDs in range(n_items) per arm."""
+    if len(rankings) == 0:
+        raise ValueError("at least one ranking is required")
+    orders = []
+    for arm, ranking in enumerate(rankings):
+        vector = np.asarray(ranking)
+        if vector.ndim != 1:
+            raise ValueError(f"ranking {arm} must be one-dimensional")
+        if vector.size == 0:
+            raise ValueError(f"ranking {arm} must not be empty")
+        if vector.dtype.kind not in "iu":
+            raise ValueError(f"ranking {arm} must contain integer item IDs")
+        if vector.min() < 0 or vector.max() >= n_items:
+            raise ValueError(f"ranking {arm} contains item IDs outside [0, {n_items})")
+        if np.unique(vector).size != vector.size:
+            raise ValueError(f"ranking {arm} contains duplicate item IDs")
+        orders.append(vector.astype(np.int64, copy=True))
+    return orders
+
+
+_STATE_VERSION = 1
+_STATE_KEYS = (
+    "version",
+    "input_kind",
+    "n_items",
+    "window",
+    "prior",
+    "seed",
+    "orders",
+    "pointers",
+    "history",
+    "successes",
+    "trials",
+    "pending",
+    "arm_by_item",
+    "seen",
+    "issued",
+    "rng",
+)
+
+
+def _state_int(value: object, name: str, low: int, high: int) -> int:
+    """Return value as int if it is a non-bool integer in [low, high]."""
+    if (
+        not isinstance(value, (int, np.integer))
+        or isinstance(value, (bool, np.bool_))
+        or not low <= value <= high
+    ):
+        raise ValueError(f"state {name} must be an integer in [{low}, {high}]")
+    return int(value)
+
+
+def _state_list(value: object, name: str, length: int | None = None) -> list:
+    if not isinstance(value, list) or (length is not None and len(value) != length):
+        suffix = "" if length is None else f" of length {length}"
+        raise ValueError(f"state {name} must be a list{suffix}")
+    return value
+
+
+def _state_pairs(value: object, name: str, n_items: int, n_arms: int) -> dict[int, int]:
+    """Parse a list of [item, arm] pairs into a dict."""
+    pairs: dict[int, int] = {}
+    for pair in _state_list(value, name):
+        pair = _state_list(pair, f"{name} entry", 2)
+        item = _state_int(pair[0], f"{name} item", 0, n_items - 1)
+        if item in pairs:
+            raise ValueError(f"state {name} repeats item {item}")
+        pairs[item] = _state_int(pair[1], f"{name} arm", 0, n_arms - 1)
+    return pairs
+
+
+def _plain_scalar(value: Any) -> Any:
+    """Python scalar for numpy scalars (``np.int64(5)`` -> ``5``); else unchanged."""
+    return value.item() if isinstance(value, np.generic) else value
+
+
 class ThompsonQueue:
     """Stateful, globally deduplicated queue using Beta-Bernoulli sampling.
 
@@ -211,6 +289,22 @@ class ThompsonQueue:
     Input semantics match rrf, except that score ties always use the seeded
     random permutation (tie_break="random"). All randomness is local to the
     supplied seed.
+
+    input_kind="partial_orders" (requires n_items) accepts one distinct list of
+    unique integer item IDs in [0, n_items) per arm. Arms may differ in length
+    and may overlap. An item reserved through one arm is skipped by the others;
+    an arm whose list has no unseen item left is exhausted and is never
+    sampled. next() raises StopIteration only once every arm is exhausted. With
+    complete permutations this mode consumes the RNG exactly like "orders".
+
+    mark_seen(item) (additive) marks a not-pending item as seen without
+    reserving it through any arm (for example one consumed by an outside
+    exploration policy): every arm then skips it, no arm gets credit and it is
+    never pending. It is idempotent and recorded in to_state().
+
+    to_state() returns a JSON-compatible dict (including the RNG state) and
+    from_state() restores a queue that continues the identical sequence.
+    arm_stats(), exhausted() and arm_of(item) are read-only accessors.
     """
 
     def __init__(
@@ -220,7 +314,8 @@ class ThompsonQueue:
         prior: tuple[float, float] = (1, 1),
         seed: int = 42,
         *,
-        input_kind: InputKind = "orders",
+        input_kind: QueueInputKind = "orders",
+        n_items: int | None = None,
     ) -> None:
         if window is not None and (
             isinstance(window, bool) or not isinstance(window, int) or window <= 0
@@ -228,21 +323,102 @@ class ThompsonQueue:
             raise ValueError("window must be a positive integer or None")
         if len(prior) != 2 or not np.isfinite(prior).all() or min(prior) <= 0:
             raise ValueError("prior must contain two finite positive parameters")
-        self._orders = _orders(rankings, input_kind, seed, "random")
+        self._partial = input_kind == "partial_orders"
+        if input_kind == "partial_orders":
+            if (
+                n_items is None
+                or not isinstance(n_items, (int, np.integer))
+                or isinstance(n_items, (bool, np.bool_))
+                or n_items <= 0
+            ):
+                raise ValueError(
+                    "n_items must be a positive integer for input_kind='partial_orders'"
+                )
+            self._orders = _partial_orders(rankings, int(n_items))
+            n_seen = int(n_items)
+        else:
+            if n_items is not None:
+                raise ValueError(
+                    "n_items is only valid with input_kind='partial_orders'"
+                )
+            self._orders = _orders(rankings, input_kind, seed, "random")
+            n_seen = len(self._orders[0])
+        self._input_kind: str = input_kind
+        self._seed = seed
         self._rng = np.random.default_rng(seed)
         self._window = window
         self._prior = prior
-        self._seen = np.zeros(len(self._orders[0]), dtype=bool)
+        self._seen = np.zeros(n_seen, dtype=bool)
         self._pointers = [0] * len(self._orders)
         self._pending: dict[int, int] = {}
+        self._marked: set[int] = set()
+        self._arm_by_item: dict[int, int] = {}
         self._history: list[deque[int]] = [deque() for _ in self._orders]
         self._successes = np.zeros(len(self._orders), dtype=np.int64)
         self._trials = np.zeros(len(self._orders), dtype=np.int64)
         self._issued = 0
 
+    def _first_unseen(self, arm: int) -> int:
+        """Position of the first unseen item of arm at or after its pointer."""
+        order = self._orders[arm]
+        position = self._pointers[arm]
+        while position < len(order) and self._seen[order[position]]:
+            position += 1
+        return position
+
+    def exhausted(self) -> list[bool]:
+        """Per arm: True when no unseen item is left in its list."""
+        return [
+            self._first_unseen(arm) >= len(order)
+            for arm, order in enumerate(self._orders)
+        ]
+
+    def arm_stats(self) -> list[tuple[int, int]]:
+        """Per arm: (successes, trials) over the current window."""
+        return [
+            (int(success), int(trial))
+            for success, trial in zip(self._successes, self._trials, strict=True)
+        ]
+
+    def arm_of(self, item: int) -> int:
+        """Arm that reserved item; valid while pending and after update.
+
+        Raises KeyError if the item was never reserved.
+        """
+        try:
+            return self._arm_by_item[item]
+        except KeyError:
+            raise KeyError(f"item {item!r} was never reserved") from None
+
+    def _next_partial(self) -> int:
+        positions = [self._first_unseen(arm) for arm in range(len(self._orders))]
+        active = np.array(
+            [
+                position < len(order)
+                for position, order in zip(positions, self._orders, strict=True)
+            ]
+        )
+        if not active.any():
+            raise StopIteration
+        samples = self._rng.beta(
+            self._prior[0] + self._successes,
+            self._prior[1] + self._trials - self._successes,
+        )
+        arm = int(np.argmax(np.where(active, samples, -np.inf)))
+        self._pointers = positions
+        item = int(self._orders[arm][self._pointers[arm]])
+        self._pointers[arm] += 1
+        self._seen[item] = True
+        self._issued += 1
+        self._pending[item] = arm
+        self._arm_by_item[item] = arm
+        return item
+
     def next(self) -> int:
         """Reserve the next unique positional item ID; raise on exhaustion."""
-        if self._issued == len(self._seen):
+        if self._partial:
+            return self._next_partial()
+        if self._issued + len(self._marked) == len(self._seen):
             raise StopIteration
         samples = self._rng.beta(
             self._prior[0] + self._successes,
@@ -257,7 +433,26 @@ class ThompsonQueue:
         self._seen[item] = True
         self._issued += 1
         self._pending[item] = arm
+        self._arm_by_item[item] = arm
         return item
+
+    def mark_seen(self, item: int) -> None:
+        """Mark a not-pending item as seen so that every arm skips it.
+
+        Idempotent. Raises ValueError for a non-integer or out-of-range item
+        and for an item that is currently pending (reserved, not yet updated).
+        """
+        if not isinstance(item, (int, np.integer)) or isinstance(item, bool):
+            raise ValueError("item must be an integer ID")
+        if not 0 <= int(item) < len(self._seen):
+            raise ValueError(f"item {item!r} is outside [0, {len(self._seen)})")
+        key = int(item)
+        if key in self._pending:
+            raise ValueError("item is pending: update it before marking it seen")
+        if self._seen[key]:
+            return
+        self._seen[key] = True
+        self._marked.add(key)
 
     def update(self, item: int, label: int) -> None:
         """Apply binary feedback to a reserved item; reject duplicate updates."""
@@ -277,6 +472,124 @@ class ThompsonQueue:
             if len(history) > self._window:
                 self._successes[arm] -= history.popleft()
                 self._trials[arm] -= 1
+
+    def to_state(self) -> dict:
+        """Return the complete state as a JSON-compatible dict (RNG included)."""
+        return {
+            "version": _STATE_VERSION,
+            "input_kind": self._input_kind,
+            "n_items": len(self._seen),
+            "window": _plain_scalar(self._window),
+            "prior": [float(self._prior[0]), float(self._prior[1])],
+            "seed": _plain_scalar(self._seed),
+            "orders": [order.tolist() for order in self._orders],
+            "pointers": [int(pointer) for pointer in self._pointers],
+            "history": [[int(reward) for reward in h] for h in self._history],
+            "successes": self._successes.tolist(),
+            "trials": self._trials.tolist(),
+            "pending": [[int(i), int(a)] for i, a in self._pending.items()],
+            "arm_by_item": [[int(i), int(a)] for i, a in self._arm_by_item.items()],
+            "seen": np.flatnonzero(self._seen).tolist(),
+            "marked": sorted(self._marked),
+            "issued": int(self._issued),
+            "rng": self._rng.bit_generator.state,
+        }
+
+    @classmethod
+    def from_state(cls, state: dict) -> ThompsonQueue:
+        """Restore a queue from to_state() output (also after a JSON round trip)."""
+        if not isinstance(state, dict):
+            raise ValueError("state must be a dict")
+        version = state.get("version")
+        if isinstance(version, bool) or version != _STATE_VERSION:
+            raise ValueError(f"unsupported ThompsonQueue state version: {version!r}")
+        missing = [key for key in _STATE_KEYS if key not in state]
+        if missing:
+            raise ValueError(f"state is missing keys: {missing}")
+        kind = state["input_kind"]
+        if kind not in {"orders", "scores", "partial_orders"}:
+            raise ValueError(f"state has an invalid input_kind: {kind!r}")
+        prior = state["prior"]
+        if not isinstance(prior, list) or len(prior) != 2:
+            raise ValueError("state prior must be a list of two numbers")
+        partial = kind == "partial_orders"
+        orders = _state_list(state["orders"], "orders")
+        # Stored scores-mode orders are already permutations: rebuild as orders.
+        queue = cls(
+            orders,
+            state["window"],
+            (prior[0], prior[1]),
+            state["seed"],
+            input_kind="partial_orders" if partial else "orders",
+            n_items=state["n_items"] if partial else None,
+        )
+        queue._input_kind = kind
+        n_items = len(queue._seen)
+        n_arms = len(queue._orders)
+        if _state_int(state["n_items"], "n_items", 0, n_items) != n_items:
+            raise ValueError("state n_items does not match its orders")
+        pointers = _state_list(state["pointers"], "pointers", n_arms)
+        queue._pointers = [
+            _state_int(p, "pointer", 0, len(queue._orders[arm]))
+            for arm, p in enumerate(pointers)
+        ]
+        successes = _state_list(state["successes"], "successes", n_arms)
+        trials = _state_list(state["trials"], "trials", n_arms)
+        histories = _state_list(state["history"], "history", n_arms)
+        for arm in range(n_arms):
+            trial = _state_int(trials[arm], "trials entry", 0, n_items)
+            success = _state_int(successes[arm], "successes entry", 0, trial)
+            rewards = [
+                _state_int(r, "history reward", 0, 1)
+                for r in _state_list(histories[arm], "history entry")
+            ]
+            if queue._window is None:
+                if rewards:
+                    raise ValueError("state history must be empty without a window")
+            elif (
+                len(rewards) > queue._window
+                or len(rewards) != trial
+                or sum(rewards) != success
+            ):
+                raise ValueError("state history is inconsistent with its counters")
+            queue._history[arm] = deque(rewards)
+            queue._successes[arm] = success
+            queue._trials[arm] = trial
+        seen = _state_list(state["seen"], "seen")
+        seen_items = {_state_int(i, "seen item", 0, n_items - 1) for i in seen}
+        if len(seen_items) != len(seen):
+            raise ValueError("state seen repeats an item")
+        arm_by_item = _state_pairs(state["arm_by_item"], "arm_by_item", n_items, n_arms)
+        pending = _state_pairs(state["pending"], "pending", n_items, n_arms)
+        issued = _state_int(state["issued"], "issued", 0, n_items)
+        marked_raw = _state_list(state.get("marked", []), "marked")
+        marked = {_state_int(i, "marked item", 0, n_items - 1) for i in marked_raw}
+        if len(marked) != len(marked_raw):
+            raise ValueError("state marked repeats an item")
+        if (
+            set(arm_by_item) & marked
+            or set(arm_by_item) | marked != seen_items
+            or issued != len(arm_by_item)
+        ):
+            raise ValueError("state seen, marked, arm_by_item and issued disagree")
+        for item, arm in arm_by_item.items():
+            if not (queue._orders[arm] == item).any():
+                raise ValueError(f"state item {item} is not in the list of arm {arm}")
+        if any(arm_by_item.get(item) != arm for item, arm in pending.items()):
+            raise ValueError("state pending items disagree with arm_by_item")
+        queue._seen[sorted(seen_items)] = True
+        queue._marked = marked
+        queue._arm_by_item = arm_by_item
+        queue._pending = pending
+        queue._issued = issued
+        rng_state = state["rng"]
+        if not isinstance(rng_state, dict):
+            raise ValueError("state rng must be a dict")
+        try:
+            queue._rng.bit_generator.state = rng_state
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"state rng is invalid: {exc}") from exc
+        return queue
 
 
 def review_queue(
