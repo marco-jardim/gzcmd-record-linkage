@@ -633,3 +633,35 @@ Observação fora dos critérios: com a régua plana P a transferência soma +2,
   leituras e réguas) foram fixadas ao implementar, antes dos números finais de
   R4; o literal `mae:missing` só foi visto como indefinido ao rodar.
 - B limitado ao tamanho do passo (não houve caso: o menor passo tem 1.329 pares).
+
+## 9. Comparação com a ordenação O1
+
+Acrescentada em 2026-11-16, **sem alterar as seções 1 a 8**. Todas as comparações anteriores
+deste documento usaram como referência a ordem pela nota final do CdR (a O2 da tese, 12 pares
+verdadeiros abaixo do corte com 96 revisões). A tese também tem a **O1**, a ordem pelo escore do
+OpenRecLink (`SCORE`), igualmente sem rótulos, que recupera 19 com 96 revisões (reproduzido:
+O1 = 19, O2 = 12). As comparações principais foram refeitas contra a O1, **offline** e com as
+mesmas ressalvas (36 positivos, humano perfeito, uma realização do LLM): detalhes em
+`docs/comparacao_o1.md` e `docs/comparacao_o1.csv` (`notebooks/exp_baseline_o1.py`).
+
+O `SCORE` tem só 82 valores distintos, então o desempate importa: com desempate aleatório a O1
+recupera, em B = 50 / 96 / 100 / 200 / 400 / 800, 8,7 [5–12] / 19,0 / 19,1 / 19,8 / 21,4 / 25,0
+(a ordem do arquivo, que favorece a O1, dá 12 / 19 / 19 / 21 / 23 / 25), contra 10 / 12 / 12 /
+13 / 13 / 17 da O2.
+
+| comparação (B = 96 a 400, salvo indicação) | resultado contra a O1 |
+|---|---|
+| H1/H6 no real: S2 com régua O1 (Platt do extrato inteiro) | −7,1 a −1,6 pares; em B = 800, +2,8 (era +16 contra a O2 com a régua plana; contra a O1, +8,0 com ela) |
+| H8: bandit sobre faixas de posição da O1 | S5 − O1 = −5,6 (B=50), −10,1 (96), −9,1 (100), +0,4 (200), −0,6 (400), −3,6 (800): não supera a O1 |
+| H7/C1: LLM como desempate em janelas da O1 (decisões reais do fixture) | 0 a +6 pares; cobertura limpa de só 8% a 18% da janela (o fixture inteiro cobre 100% dos positivos e inflaria o ganho): comparação limitada |
+| Fila auto-calibrável (S1; simulações e execução real) | perde da O1 em B ≥ 100 com qualquer revisor (S1 real 7,2 contra 19 a 25); em B = 50 só o LLM perfeito supera (16,0) |
+| H0 pela O1 na execução ponta a ponta (pool `all`, ~127 decisões) | 127 verificados e 0 abaixo do corte (a O1 põe antes os 211 pares acima do corte) |
+
+Consequência: contra a O1 desaparece quase todo o ganho de S2 do extrato real e a margem da
+fila piora; H8 se mantém; o LLM como desempate fica indeterminado pela cobertura. Em B = 50 a O1
+(média) não supera a O2.
+
+**Erratum (E1).** A leitura de H8 real na seção 6.4 ("1,95 contra 17,00 verdadeiros em B = 800")
+confunde populações: o 1,95 é do bandit S5 com a permutação N1 em B = 800, a ordem pela nota
+(S0) com a mesma permutação teve 1,25 (N1) e 0 (N2), e os 17,00 são da S0 **sem** indução
+(cenário real, em que S5 = 15). A conclusão de H8 não muda.

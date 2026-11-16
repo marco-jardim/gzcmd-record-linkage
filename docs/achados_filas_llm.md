@@ -1,9 +1,9 @@
 # Achados sobre filas de revisão e uso de LLM na zona cinza: base para atualizar a tese
 
 **Data:** 2026-11-15.
-**Status:** documento vivo; achados parciais marcados. Cada linha traz o seu status e a fonte. **Todos os experimentos planejados foram concluídos** (inclusive a replicação por passo de blocagem, seção E.5, e a simulação com taxas medidas do Haiku e replay do fixture, seção F), e o documento está **pronto para servir de base à atualização da tese**. As pendências restantes são as que exigem dados externos ou revisores reais (H12; replicação externa com outro extrato ou mais positivos; estudo com revisores humanos), listadas na seção I.
+**Status:** documento vivo; achados parciais marcados. Cada linha traz o seu status e a fonte. **Todos os experimentos planejados foram concluídos** (e, depois, refeitos contra a O1: seção J) (inclusive a replicação por passo de blocagem, seção E.5, e a simulação com taxas medidas do Haiku e replay do fixture, seção F), e o documento está **pronto para servir de base à atualização da tese**. As pendências restantes são as que exigem dados externos ou revisores reais (H12; replicação externa com outro extrato ou mais positivos; estudo com revisores humanos), listadas na seção I.
 
-> **Aviso.** Nada do que está aqui foi avaliado na tese original. Os experimentos usam o método experimental `self_calibrating_queue` (0.7.0), que não existe na tese nem na 0.6.1, e o extrato único da tese (61.696 pares; 247 verdadeiros, 211 aceitos pelo corte e 36 abaixo dele). Os revisores humanos são **simulados e perfeitos**; os vereditos do LLM são, em geral, **uma única realização** (temperatura padrão, congelada num fixture). Apenas agregados; nenhum identificador de par, nenhuma chave. Este documento não edita a tese: a seção H apenas sugere onde e como cada achado poderia entrar.
+> **Aviso.** Nada do que está aqui foi avaliado na tese original. Os experimentos usam o método experimental `self_calibrating_queue` (0.7.0), que não existe na tese nem na 0.6.1, e o extrato único da tese (61.696 pares; 247 verdadeiros, 211 aceitos pelo corte e 36 abaixo dele). Os revisores humanos são **simulados e perfeitos**; os vereditos do LLM são, em geral, **uma única realização** (temperatura padrão, congelada num fixture). **Referência das comparações:** todos os experimentos das seções A a I compararam as estratégias com a ordem pela nota final do CdR (a O2 da tese, 12 verdadeiros com 96 revisões); a tese também tem a O1, a ordem pelo escore do OpenRecLink (19 com 96 revisões), que também não usa rótulos. A seção J refaz as comparações principais contra a O1 e muda várias leituras. Apenas agregados; nenhum identificador de par, nenhuma chave. Este documento não edita a tese: a seção H apenas sugere onde e como cada achado poderia entrar.
 
 **Legenda de status**
 
@@ -31,6 +31,13 @@ Onde um status "pela letra" difere do que o critério pretendia medir, isso est�
 | E3 | LLM como atributo (S3) no real | **Parcial/Exploratório** (uma realização; IC degenerado) | B=400: S3 +16, S2 +6 sobre a régua (29 e 19 contra 13) | idem | Qualifica "LLM não reduz a revisão além da ordenação" |
 | E4 | Replicação por passo de blocagem (R1–R4) | **Parcial/Exploratório** (R1–R4 todas inconclusivas; R4 por critério mal especificado) | Positivos por passo 6/9/11 = 4/7/25 (passo 6 não informativo). R1: T−S0 = +2, +4, +1 (exigido ≥ +3 em B=400); R2: O−S0 em B=400 = +0 (passo 9) e +1 (passo 11); R3: P×C em T = 19×19 (B=200) e 25×19 (B=400) | `engenharia_de_filas.md` §8.1; `engenharia_de_filas_replicacao_passo.csv` | Rebaixa a evidência de E1/E2; não confirma o ganho fora da amostra |
 | F1 | Simulação com taxas medidas do Haiku e replay do fixture | **Parcial/Exploratório** (concluída; cobertura parcial do fixture) | Abaixo do corte, B=50: fila 6,1; H0 10,0; H1 11,0; a fila não chega a k=10 | `sim_fila_autocalibravel.md`, "Revisor calibrado no Haiku real" | Mesma leitura de B1, com revisor real |
+| J1 | O1 (escore do OpenRecLink) contra O2 (nota) com humano sozinho; reproduz a tese em 96 revisões | **Confirmado** (medição direta) | 96 revisões: O1 19, O2 12. Com desempate aleatório: O1 = 8,7 [5–12], 19,0, 19,1, 19,8, 21,4, 25,0 e O2 = 10, 12, 12, 13, 13, 17 em B = 50, 96, 100, 200, 400, 800 | `comparacao_o1.md` §2, §4.a | A referência correta dos achados é a O1; ordem do arquivo favorece a O1 |
+| J2 | S2 contra a O1 | **Parcial/Exploratório** (reduz E1) | Sem ganho em B = 96 a 400 (−7,1 a −1,6 com régua O1; −4,1 a −2,2 com a régua plana); em B = 800, +2,8 (régua O1) e +8,0 (régua plana), contra +16 sobre a O2 | `comparacao_o1.md` §4.b | O ganho de S2 sobre a referência real quase desaparece |
+| J3 | Bandit sobre faixas de O1 contra O1 | **Confirmado** (direção) | S5−O1 = −5,6; −10,1; −9,1; +0,4; −0,6; −3,6 em B = 50, 96, 100, 200, 400, 800 | `comparacao_o1.md` §4.c | Mantém D2 |
+| J4 | LLM como desempate sobre janelas da O1 (decisões reais; cobertura limitada) | **Parcial/Exploratório** (cobertura de 8% a 18% da janela) | 0 a +6 pares; −3,5 a +2,9 em B = 96; o fixture bruto (100% dos positivos cobertos) inflaria o ganho (+11,4 em B = 50) | `comparacao_o1.md` §4.d | Qualifica C1: ganho incerto com a O1 |
+| J5 | Fila auto-calibrável existente contra a curva da O1 | **Confirmado** (direção) | Perde da O1 em B ≥ 100 em todo revisor (11,8 contra 19,1 em B=100, taxas medidas; S1 real 7,2); em B = 50 só o LLM perfeito supera (16,0 contra 8,7 a 12) | `comparacao_o1.md` §4.e | Reforça B1 com margem maior |
+| J6 | H0 pela O1 na execução ponta a ponta (pool `all`, ~127 decisões) | **Confirmado** (medição direta) | 127 verificados e 0 abaixo do corte em B = 127; no pool abaixo do corte a O1 recupera 19,1 (B=100) | `comparacao_o1.md` §4.f | O pool `all` não serve para comparar a O1 abaixo do corte |
+| J7 | Erro E1 da revisão factual (1,95 contra 17,00 do H8 real) | **Corrigido** | Em B=800: N1: S0 1,25 e S5 1,95; N2: S0 0 e S5 0,50; real: S0 17 e S5 15 | `comparacao_o1.md` §6; D (H8 real) | Corrige a leitura do ganho do bandit |
 | I1 | H12: o LLM reduz o tempo por decisão humana | **Pendente** (não testável offline) | — | `engenharia_de_filas.md` §4 | Requer estudo com revisores reais |
 
 ## A. Medições do LLM real (Haiku 5.5, prompt v4, sem saídas do motor e sem nota)
@@ -210,7 +217,7 @@ Com B ≥ W, L e N revisam o mesmo conjunto (diferença 0 por construção). L1 
 | H11 (LLM audita decisões humanas) | **Confirmado** | **Refutado** | Sintético: recuperação 0,59–0,78, precisão 0,86–0,99. Real: ver abaixo |
 | H12 (o LLM reduz o tempo por decisão humana) | **Pendente** (não testável offline) | **Pendente** | Exige estudo com revisores reais |
 
-**H8 no real** (`engenharia_de_filas_real_h8_h11.md`; 20 sementes; recompensa = par verdadeiro ou MATCH do LLM). Premissa de monotonia verificada: taxa por faixa 2,76% (0–1%), 0,12% (1–5%), 0,11% (5–20%), 0,01% (20–100%). Cenário `real`: S5−S0 de −2,00 (B=100 e B=800) a 0,00, nunca com limite inferior > 0 (S0 = 10, 12, 13, 13, 17 e S5 = 10, 10, 12,2, 13, 15 em B = 50…800). Com não monotonia induzida (verdadeiros do topo permutados para 1–5%, N1, ou 5–20%, N2): S5−S0 = +0,15 a +0,80 (N1) e +0,05 a +0,50 (N2), com IC acima de 0 em B ≥ 100 (N1) e B ≥ 400 (N2). Ressalva: os ganhos são pequenos em valor absoluto e medidos contra uma S0 que a indução prejudicou (1,95 contra 17,00 verdadeiros em B=800); N1 e N2 são construções do analista.
+**H8 no real** (`engenharia_de_filas_real_h8_h11.md`; 20 sementes; recompensa = par verdadeiro ou MATCH do LLM). Premissa de monotonia verificada: taxa por faixa 2,76% (0–1%), 0,12% (1–5%), 0,11% (5–20%), 0,01% (20–100%). Cenário `real`: S5−S0 de −2,00 (B=100 e B=800) a 0,00, nunca com limite inferior > 0 (S0 = 10, 12, 13, 13, 17 e S5 = 10, 10, 12,2, 13, 15 em B = 50…800). Com não monotonia induzida (verdadeiros do topo permutados para 1–5%, N1, ou 5–20%, N2): S5−S0 = +0,15 a +0,80 (N1) e +0,05 a +0,50 (N2), com IC acima de 0 em B ≥ 100 (N1) e B ≥ 400 (N2). Ressalva: os ganhos são pequenos em valor absoluto e medidos contra uma S0 que a indução prejudicou. **Correção (erro E1 da revisão factual):** em B=800, com a permutação N1 a ordem pela nota (S0) cai para 1,25 e o bandit S5 tem 1,95 (+0,70); com N2, S0 = 0 e S5 = 0,50; os 17,00 são da S0 **sem** indução (cenário real, em que S5 = 15). O texto anterior, que contrapunha o 1,95 do bandit com N1 aos 17,00 da S0 sem indução, estava errado. N1 e N2 são construções do analista.
 
 **H11 no real** (16 células de FN humano × FP humano × B). **0 de 16** satisfazem recuperação ≥ 50% e precisão ≥ 30%: recuperação de 26,1% a 47,9%; precisão de 100% em B=100 (0,3 a 0,8 par recuperado por semente), 9,1%–21,6% em B=200, 3,0%–7,7% em B=400 e 2,6%–5,2% em B=800, contra 0,2%–3,4% de uma auditoria aleatória do mesmo tamanho (15 a 30 vezes melhor que o acaso, mas longe de 30%). Na grade principal (`exp_engenharia_filas.py`, B=400, FP humano de 1%, 200 realizações do erro humano, fixture do LLM real), com FN humano de 5%: 134 FN, 61 recuperados (0,46), 2.041 re-revisões, precisão 0,03; com 10%: 257, 113 (0,44), 2.093, 0,05.
 
@@ -423,3 +430,34 @@ Mapeamento por achado, com `arquivo:linha` em `D:\git\phd-research\text\latex\` 
 - **Várias realizações do LLM** (reamostrar decisões) para dar incerteza ao revisor real; fixture com cobertura independente do rótulo.
 - **H12 (não testável offline):** estudo com revisores reais, medindo tempo por decisão, erro humano e concordância, com dupla revisão e referência cega (`estudo4_gzcmd.tex:341`, `conclusao.tex:101`).
 - **Replicação externa no sentido da tese:** coorte ou período não usados para fixar cortes e regras, com ordenação e orçamento fixados antes dos desfechos e referência cega independente (`conclusao.tex:97–99`); a replicação por passo (E.5) não a substitui.
+
+## J. Comparação com O1 (escore do OpenRecLink)
+
+Detalhes, tabelas e reprodução: `docs/comparacao_o1.md` e `docs/comparacao_o1.csv` (`notebooks/exp_baseline_o1.py`; testes em `tests/test_exp_baseline_o1.py`). **Escopo:** offline (nenhum identificador de par foi enviado à API), 36 positivos abaixo do corte, uma realização do LLM (decisões reais do fixture; sem taxas sintéticas nas comparações com o LLM), humano perfeito.
+
+**O que a O1 é aqui.** Ordem decrescente de `SCORE` (cabeçalho `SCORE,C,15,0`, vírgula decimal resolvida), sem rótulos, universo abaixo do corte (61.485). Reproduz a tese em 96 revisões: **O1 = 19, O2 = 12**. O `SCORE` tem só 82 valores distintos: o desempate muda o resultado (B = 50: 5 a 12; B = 200 e 400: 19 a 22 e 19 a 23), e a ordem do arquivo do extrato favorece a O1 (positivos mais cedo). Usa-se o desempate aleatório por semente (média [mín–máx]); a ordem do arquivo fica como variante.
+
+**Tabela-síntese** (verdadeiros abaixo do corte, de 36; B = 50 / 96 / 100 / 200 / 400 / 800):
+
+| estratégia | B=50 | B=96 | B=100 | B=200 | B=400 | B=800 |
+|---|---|---|---|---|---|---|
+| O1, ordem do arquivo (tese) | 12 | 19 | 19 | 21 | 23 | 25 |
+| O1, desempate aleatório (média) | 8,7 | 19,0 | 19,1 | 19,8 | 21,4 | 25,0 |
+| O2, nota final do CdR | 10 | 12 | 12 | 13 | 13 | 17 |
+| S2x, régua O1 (Platt do extrato inteiro) | 9,8 | 12,0 | 12,1 | 13,8 | 19,6 | 27,8 |
+| S2x, régua O2 plana | 14,0 | 15,0 | 15,0 | 17,0 | 19,0 | 33,0 |
+| S5 (bandit) sobre faixas de O1 | 3,0 | 9,0 | 10,0 | 20,0 | 20,6 | 21,4 |
+| LLM L1 em O1, W = 1000 (cobertura 12,5%) | 13,9 | 22,0 | 22,1 | 22,5 | 23,5 | 27,0 |
+
+**Consequência para as conclusões (o que muda com a referência O1):**
+
+1. **A referência é mais forte** (19 contra 12 em 96 revisões; 25 contra 17 em 800). Nenhuma das margens "sobre a régua" das seções A a I era sobre a O1.
+2. **E1 (S2 supera a régua no real) enfraquece muito.** Contra a O1, S2 fica 1,6 a 7,1 pares abaixo em B = 96 a 400 (régua O1) e 2,2 a 4,1 (régua plana); só em B = 800 aparece ganho: +2,8 (régua O1) e +8,0 (régua plana; era +16 contra a O2). A S2 não foi ajustada à escala do `SCORE`.
+3. **B1 (a fila padrão não supera as bases) se reforça**: a fila perde da O1 por 6,8 a 9,6 pares em B = 100 e 200 (taxas medidas e da tese) contra 0 a 2,5 da O2; S1 real 7,2 contra 19 a 25. Só o LLM perfeito em B = 50 (16,0) supera a O1.
+4. **D2 (bandit) se mantém** contra a O1 (S5 ≤ O1 em quase todo B).
+5. **C1/E3 (LLM como desempate/atributo)**: com a O1 a comparação é **limitada** pela cobertura do fixture (8% a 18% da janela, na variante limpa); o ganho é de 0 a +6 pares, inconsistente em B = 96 (−3,5 a +2,9). Usar o fixture inteiro daria ganho inflado (+11,4 em B = 50), porque a cobertura depende do rótulo (100% dos positivos cobertos contra 19% a 32% dos pares).
+6. **Ponta a ponta (B ≈ 127):** H0 pela O1 no pool `all` verifica 127 e revisa 0 pares abaixo do corte (a O1 põe antes os 211 acima do corte), por isso a métrica de verificados no pool `all` não serve; no pool abaixo do corte a O1 recupera 19,1 em B = 100, contra 4 da fila.
+7. **Em B = 50 a O1 não é melhor que a O2** (8,7 contra 10 em média), o que limita a leitura de "a O1 domina".
+8. **Implicação para a tese:** a recomendação da tese de ordenar abaixo do corte por O3/F4 não é afetada (não comparável aqui, sem padrão-ouro); mas qualquer menção aos achados de fila deve citar a O1 como referência sem rótulos e dizer que os ganhos de S2/LLM frente à O2 encolhem ou somem frente à O1 e dependem do desempate. Nada mais foi alterado na seção H.
+
+**Ressalvas.** Uma realização do LLM; 36 positivos; S2 e S5 não ajustadas à O1; valores das filas existentes lidos dos CSVs (sem rodar de novo; pontos de B diferem entre as fontes); a regra de desempate aleatório é uma escolha do analista.
