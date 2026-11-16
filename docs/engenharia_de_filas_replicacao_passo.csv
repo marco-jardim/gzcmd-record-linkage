@@ -1,0 +1,29 @@
+fold,pairs,positives,ruler_source,B,S0,T,O,O_com_amostra,ruler,table,mae_missing_literal,mae_missing,nome_L3,dtnasc_zero,criterion,status,detail
+6,2573,4,stub,100,3,4,4,4,P,found,,,,,,,
+6,2573,4,stub,200,3,4,4,4,P,found,,,,,,,
+6,2573,4,stub,400,3,4,4,4,P,found,,,,,,,
+9,1329,7,stub,100,5,7,7,7,P,found,,,,,,,
+9,1329,7,stub,200,6,7,7,7,P,found,,,,,,,
+9,1329,7,stub,400,7,7,7,7,P,found,,,,,,,
+11,57583,25,stub,100,9,9,12,12,P,found,,,,,,,
+11,57583,25,stub,200,9,12,14,14,P,found,,,,,,,
+11,57583,25,stub,400,11,18,14,14,P,found,,,,,,,
+6,2573,4,anchor_platt_full_extract,100,3,3,3,3,C,found,,,,,,,
+6,2573,4,anchor_platt_full_extract,200,3,3,3,3,C,found,,,,,,,
+6,2573,4,anchor_platt_full_extract,400,3,3,3,3,C,found,,,,,,,
+9,1329,7,anchor_platt_full_extract,100,5,5,5,5,C,found,,,,,,,
+9,1329,7,anchor_platt_full_extract,200,6,7,7,7,C,found,,,,,,,
+9,1329,7,anchor_platt_full_extract,400,7,7,7,7,C,found,,,,,,,
+11,57583,25,anchor_platt_full_extract,100,9,11,9,9,C,found,,,,,,,
+11,57583,25,anchor_platt_full_extract,200,9,12,9,9,C,found,,,,,,,
+11,57583,25,anchor_platt_full_extract,400,11,12,12,12,C,found,,,,,,,
+6,,4,stub,,,,,,P,r4_signals,,0.478264,0.138929,-0.470222,,,
+9,,7,stub,,,,,,P,r4_signals,,0.351227,0.155895,-0.518996,,,
+11,,25,stub,,,,,,P,r4_signals,,0.295446,0.346496,-0.557126,,,
+6,,4,anchor_platt_full_extract,,,,,,C,r4_signals,,0.247635,-0.245646,-1.19369,,,
+9,,7,anchor_platt_full_extract,,,,,,C,r4_signals,,0.12347,-0.124518,-0.953967,,,
+11,,25,anchor_platt_full_extract,,,,,,C,r4_signals,,0.219817,0.150429,-0.700275,,,
+,,,,,,,,,,criteria,,,,,R1,inconclusiva,"soma T-S0 (C, dobras informativas): B=100: +2, B=200: +4, B=400: +1"
+,,,,,,,,,,criteria,,,,,R2,inconclusiva,"O-S0 em B=400 por dobra (C): passo 9: +0, passo 11: +1"
+,,,,,,,,,,criteria,,,,,R3,inconclusiva,"encontrados em T somados, P vs C: B=200: 19 vs 19, B=400: 25 vs 19"
+,,,,,,,,,,criteria,,,,,R4,inconclusiva — critério mal especificado,"veredito por (leitura, régua): refutada, refutada, inconclusiva, confirmada | C/literal/passo 9: mae:missing +nan, nome:L3 -0.12, dtnasc zero -0.95 (0 de 3 a favor); C/literal/passo 11: mae:missing +nan, nome:L3 +0.15, dtnasc zero -0.70 (1 de 3 a favor); P/literal/passo 9: mae:missing +nan, nome:L3 +0.16, dtnasc zero -0.52 (1 de 3 a favor); P/literal/passo 11: mae:missing +nan, nome:L3 +0.35, dtnasc zero -0.56 (1 de 3 a favor); C/invariante/passo 9: mae:missing +0.12, nome:L3 -0.12, dtnasc zero -0.95 (1 de 3 a favor); C/invariante/passo 11: mae:missing +0.22, nome:L3 +0.15, dtnasc zero -0.70 (2 de 3 a favor); P/invariante/passo 9: mae:missing +0.35, nome:L3 +0.16, dtnasc zero -0.52 (2 de 3 a favor); P/invariante/passo 11: mae:missing +0.30, nome:L3 +0.35, dtnasc zero -0.56 (2 de 3 a favor)"
