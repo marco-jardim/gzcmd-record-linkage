@@ -20,3 +20,12 @@ venv/
 *.executed.ipynb
 
 # NOTE: data/synthetic/*.csv is intentionally NOT ignored (DEC-05 — versioned, small, reproducible).
+
+# Segredos locais
+.env
+
+# Cache de chamadas reais ao LLM (texto derivado dos pares; nunca versionar)
+data/llm_cache/
+
+# Decisões reais do LLM congeladas para replay (nível de par; não versionar sem decisão explícita)
+data/llm_fixtures/

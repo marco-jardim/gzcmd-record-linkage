@@ -129,6 +129,9 @@ def _all_zero(df: pd.DataFrame, cols: Iterable[str]) -> pd.Series:
 @dataclass(frozen=True)
 class LoadConfig:
     macd_enabled: bool = True
+    # With ``require_par=False`` a missing PAR column is tolerated and no TARGET
+    # is created (it would otherwise be all-zero and pass for a real label).
+    require_par: bool = True
 
 
 def feature_engineer(df: pd.DataFrame, *, cfg: LoadConfig) -> pd.DataFrame:
@@ -172,7 +175,8 @@ def feature_engineer(df: pd.DataFrame, *, cfg: LoadConfig) -> pd.DataFrame:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce")
 
-    out = add_target(out)
+    if cfg.require_par or COL_PAR in out.columns:
+        out = add_target(out)
 
     # Parse event dates (used by guardrails)
     if "R_DTOBITO" in out.columns:
@@ -309,7 +313,10 @@ def feature_engineer(df: pd.DataFrame, *, cfg: LoadConfig) -> pd.DataFrame:
         out["score_regras"] = 0.0
 
     # Fail fast on required metadata
-    for req in [COL_COMPREC, COL_REFREC, COL_PASSO, COL_PAR]:
+    required = [COL_COMPREC, COL_REFREC, COL_PASSO]
+    if cfg.require_par:
+        required.append(COL_PAR)
+    for req in required:
         if req not in out.columns:
             raise KeyError(f"Missing required column: {req}")
 
