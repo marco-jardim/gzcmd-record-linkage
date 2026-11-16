@@ -1079,23 +1079,24 @@ def _leituras(
         + "."
     )
     b_max = int(h8["budget"].max())
-    s5_ind = h8[
-        (h8["metric"] == "s5")
-        & (h8["scenario"] != "real")
-        & (h8["reward"] == "human")
-        & (h8["budget"] == b_max)
-    ]["mean"].max()
-    s0_real = h8[
-        (h8["metric"] == "s0")
-        & (h8["scenario"] == "real")
-        & (h8["reward"] == "human")
-        & (h8["budget"] == b_max)
-    ]["mean"].iloc[0]
+
+    def _mean_at(metric: str, scenario: str) -> float:
+        sel = h8[
+            (h8["metric"] == metric)
+            & (h8["scenario"] == scenario)
+            & (h8["reward"] == "human")
+            & (h8["budget"] == b_max)
+        ]["mean"]
+        return float(sel.iloc[0])
+
+    pairs = "; ".join(
+        f"{label}: S0 {_num(_mean_at('s0', sc), 2)} e S5 {_num(_mean_at('s5', sc), 2)}"
+        for sc, label in (("N1", "N1"), ("N2", "N2"), ("real", "sem indução"))
+    )
     t8 += (
         " O ganho do bandit nas induções é pequeno em valor absoluto e é medido "
         "contra uma S0 que a própria indução prejudicou (os verdadeiros saíram do "
-        f"topo): com B={b_max}, o melhor S5 induzido tem {_num(float(s5_ind), 2)} "
-        f"verdadeiros contra {_num(float(s0_real), 2)} da S0 na régua real. "
+        f"topo). Com B={b_max}, verdadeiros verificados por cenário — {pairs}. "
         "No cenário real o bandit gasta cerca de 30% do orçamento nos braços de "
         "baixo rendimento e nunca supera a ordem da nota."
     )

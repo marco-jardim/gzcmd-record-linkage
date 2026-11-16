@@ -148,7 +148,7 @@ Recuperação e precisão são razões agregadas (IC 95% bootstrap entre semente
 
 ## Leitura
 
-**H8: confirmada.** Diferenças S5 − S0 (verdadeiros verificados): `real`/`human`: S5 − S0 de -2,00 (B=100) a 0,00 (B=50); maior limite inferior do IC 0,00; `real`/`llm`: S5 − S0 de -2,00 (B=100) a 0,00 (B=50); maior limite inferior do IC 0,00; `N1`/`human`: S5 − S0 de 0,15 (B=50) a 0,80 (B=400); maior limite inferior do IC 0,31; `N1`/`llm`: S5 − S0 de 0,15 (B=50) a 1,15 (B=400); maior limite inferior do IC 0,50; `N2`/`human`: S5 − S0 de 0,05 (B=50) a 0,50 (B=800); maior limite inferior do IC 0,14; `N2`/`llm`: S5 − S0 de 0,05 (B=50) a 0,40 (B=800); maior limite inferior do IC 0,05. O ganho do bandit nas induções é pequeno em valor absoluto e é medido contra uma S0 que a própria indução prejudicou (os verdadeiros saíram do topo): com B=800, o melhor S5 induzido tem 1,95 verdadeiros contra 17,00 da S0 na régua real. No cenário real o bandit gasta cerca de 30% do orçamento nos braços de baixo rendimento e nunca supera a ordem da nota.
+**H8: confirmada.** Diferenças S5 − S0 (verdadeiros verificados): `real`/`human`: S5 − S0 de -2,00 (B=100) a 0,00 (B=50); maior limite inferior do IC 0,00; `real`/`llm`: S5 − S0 de -2,00 (B=100) a 0,00 (B=50); maior limite inferior do IC 0,00; `N1`/`human`: S5 − S0 de 0,15 (B=50) a 0,80 (B=400); maior limite inferior do IC 0,31; `N1`/`llm`: S5 − S0 de 0,15 (B=50) a 1,15 (B=400); maior limite inferior do IC 0,50; `N2`/`human`: S5 − S0 de 0,05 (B=50) a 0,50 (B=800); maior limite inferior do IC 0,14; `N2`/`llm`: S5 − S0 de 0,05 (B=50) a 0,40 (B=800); maior limite inferior do IC 0,05. O ganho do bandit nas induções é pequeno em valor absoluto e é medido contra uma S0 que a própria indução prejudicou (os verdadeiros saíram do topo). Com B=800, verdadeiros verificados por cenário — N1: S0 1,25 e S5 1,95; N2: S0 0,00 e S5 0,50; sem indução: S0 17,00 e S5 15,00. No cenário real o bandit gasta cerca de 30% do orçamento nos braços de baixo rendimento e nunca supera a ordem da nota.
 
 **H11: refutada** (0 de 16 células). Melhor recuperação: 47,9% (FN 10,0%, FP 0,0%, B=800), com precisão 5,2% contra 0,3% da auditoria aleatória. As revisões extras incluem todo falso positivo do LLM (não par com MATCH que o humano, corretamente, recusou), o que derruba a precisão quando o LLM tem FP > 0 e há poucos FN humanos para recuperar.
 
@@ -164,4 +164,4 @@ Recuperação e precisão são razões agregadas (IC 95% bootstrap entre semente
 ## Execução
 
 - Pool: 61485 pares, 36 verdadeiros; fixture: 4604 pares (sha256 `51521231ba9779b52ea68b3896b35cf728b851e016280d1bc9971b4609b931d5`).
-- Tempo total: 9 s; pico de memória (working set): 261 MB.
+- Tempo total: 9 s; pico de memória (working set): 262 MB.
